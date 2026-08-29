@@ -143,7 +143,7 @@ class PantallaRegistro extends StatefulWidget {
 class _PantallaRegistroState extends State<PantallaRegistro> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _nombreController = TextEditingController(); // Controlador para el nombre
+  final _nombreController = TextEditingController();
   final _edadController = TextEditingController();
   
   final ImagePicker _picker = ImagePicker();
@@ -199,7 +199,6 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
 
       final fotoUrl = supabase.storage.from('fotos-perfil').getPublicUrl(fileName);
 
-      // Guardamos el nombre ingresado por el usuario en lugar de 'Explorador'
       await supabase.from('perfiles').upsert({
         'id': usuarioNuevo.id, 
         'nombre': nombre,
@@ -332,13 +331,13 @@ class PantallaRadar extends StatelessWidget {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Solicitud enviada'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Solicitud enviada con éxito'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Error al enviar solicitud: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -413,6 +412,15 @@ class PantallaRadar extends StatelessWidget {
         centerTitle: true,
         leading: const Icon(Icons.radar, color: Colors.greenAccent),
         actions: [
+          // Botón para ver la bandeja de solicitudes y chats activos
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PantallaSolicitudes()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -473,6 +481,224 @@ class PantallaRadar extends StatelessWidget {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class PantallaSolicitudes extends StatelessWidget {
+  const PantallaSolicitudes({super.key});
+
+  Future<void> actualizarEstado(String solicitudId, String nuevoEstado) async {
+    await Supabase.instance.client
+        .from('solicitudes')
+        .update({'estado': nuevoEstado})
+        .eq('id', solicitudId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final miId = Supabase.instance.client.auth.currentUser?.id;
+    final streamSolicitudes = Supabase.instance.client
+        .from('solicitudes')
+        .stream(primaryKey: ['id']);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Solicitudes y Chats')),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: streamSolicitudes,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+          // Filtramos solicitudes donde somos el receptor (pendientes) o donde ya fueron aceptadas
+          final solicitudes = snapshot.data!;
+          
+          return FutureBuilder<List<Map<String, dynamic>>>(
+            future: Supabase.instance.client.from('perfiles').select(),
+            builder: (context, perfilSnapshot) {
+              if (!perfilSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+              final perfilesMap = {for (var p in perfilSnapshot.data!) p['id']: p};
+
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  const Text('Solicitudes Recibidas (Pendientes)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
+                  const SizedBox(height: 10),
+                  ...solicitudes.where((s) => s['receptor_id'] == miId && s['estado'] == 'pendiente').map((s) {
+                    final emisor = perfilesMap[s['emisor_id']] ?? {};
+                    return Card(
+                      color: Colors.grey[850],
+                      child: ListTile(
+                        title: Text(emisor['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
+                        subtitle: const Text('Quiere conectar contigo'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.check, color: Colors.green),
+                              onPressed: () => actualizarEstado(s['id'], 'aceptada'),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.red),
+                              onPressed: () => actualizarEstado(s['id'], 'rechazada'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 30),
+                  const Text('Chats Activos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
+                  const SizedBox(height: 10),
+                  ...solicitudes.where((s) => (s['emisor_id'] == miId || s['receptor_id'] == miId) && s['estado'] == 'aceptada').map((s) {
+                    final otroId = s['emisor_id'] == miId ? s['receptor_id'] : s['emisor_id'];
+                    final otroPerfil = perfilesMap[otroId] ?? {};
+                    final fotoUrl = otroPerfil['foto_url']?.toString();
+                    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+
+                    return Card(
+                      color: Colors.grey[900],
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
+                          child: !tieneFoto ? const Icon(Icons.person) : null,
+                        ),
+                        title: Text(otroPerfil['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
+                        subtitle: const Text('Toca para abrir el chat instantáneo'),
+                        trailing: const Icon(Icons.message, color: Colors.greenAccent),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => PantallaChat(
+                                receptorId: otroId,
+                                receptorNombre: otroPerfil['nombre'] ?? 'Explorador',
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  }),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class PantallaChat extends StatefulWidget {
+  final String receptorId;
+  final String receptorNombre;
+
+  const PantallaChat({super.key, required this.receptorId, required this.receptorNombre});
+
+  @override
+  State<PantallaChat> createState() => _PantallaChatState();
+}
+
+class _PantallaChatState extends State<PantallaChat> {
+  final _mensajeController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  Future<void> enviarMensaje() async {
+    final texto = _mensajeController.text.trim();
+    if (texto.isEmpty) return;
+
+    final miId = Supabase.instance.client.auth.currentUser?.id;
+    if (miId == null) return;
+
+    _mensajeController.clear();
+
+    try {
+      await Supabase.instance.client.from('mensajes').insert({
+        'emisor_id': miId,
+        'receptor_id': widget.receptorId,
+        'contenido': texto,
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al enviar mensaje: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final miId = Supabase.instance.client.auth.currentUser?.id;
+    final streamMensajes = Supabase.instance.client
+        .from('mensajes')
+        .stream(primaryKey: ['id'])
+        .order('created_at', ascending: true);
+
+    return Scaffold(
+      appBar: AppBar(title: Text('Chat con ${widget.receptorNombre}')),
+      body: Column(
+        children: [
+          Expanded(
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: streamMensajes,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+                final mensajes = snapshot.data!.where((m) =>
+                    (m['emisor_id'] == miId && m['receptor_id'] == widget.receptorId) ||
+                    (m['emisor_id'] == widget.receptorId && m['receptor_id'] == miId)).toList();
+
+                return ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: mensajes.length,
+                  itemBuilder: (context, index) {
+                    final mensaje = mensajes[index];
+                    final esMio = mensaje['emisor_id'] == miId;
+
+                    return Align(
+                      alignment: esMio ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: esMio ? Colors.green[800] : Colors.grey[800],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          mensaje['contenido'] ?? '',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _mensajeController,
+                    decoration: const InputDecoration(
+                      hintText: 'Escribe un mensaje...',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.send, color: Colors.greenAccent),
+                  onPressed: enviarMensaje,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
