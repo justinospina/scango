@@ -4,12 +4,10 @@ import 'package:image_picker/image_picker.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
   await Supabase.initialize(
     url: 'https://zlslfegiqpgdjxoexlta.supabase.co',
     anonKey: 'AQUÍ_PEGA_TU_LLAVE_sb_publishable...', 
   );
-
   runApp(const ScanGoApp());
 }
 
@@ -21,7 +19,7 @@ class ScanGoApp extends StatelessWidget {
     return MaterialApp(
       title: 'ScanGo',
       theme: ThemeData.dark(),
-      home: const PantallaOnboarding(), // Cambiamos el inicio al Onboarding
+      home: const PantallaOnboarding(),
     );
   }
 }
@@ -42,7 +40,6 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
   final TextEditingController _edadController = TextEditingController();
   String _preferencia = 'AMBAS';
 
-  // Función 1: Capturar foto y simular IA
   Future<void> procesarFoto() async {
     final XFile? foto = await _picker.pickImage(source: ImageSource.camera);
     if (foto == null) return;
@@ -52,24 +49,31 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
       _procesandoIA = true;
     });
 
-    // Simulamos el retraso de una API de Visión Artificial (ej. Google Vision)
     await Future.delayed(const Duration(seconds: 2));
 
     setState(() {
       _procesandoIA = false;
-      _generoDetectado = 'HOMBRE'; // Aquí vendrá la respuesta real de la IA
+      _generoDetectado = 'HOMBRE'; 
     });
   }
 
-  // Función 2: Guardar en Supabase y avanzar
+  // Se movió la función dentro de la clase para acceder al context y las variables
   Future<void> guardarPerfil() async {
     if (_edadController.text.isEmpty) return;
     
-    // Aquí enviaremos los datos reales a tu tabla 'perfiles'
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Perfil guardado con éxito'), backgroundColor: Colors.green),
-    );
-    // Luego navega a PantallaRadar()...
+    final supabase = Supabase.instance.client;
+    await supabase.from('perfiles').insert({
+      'id': DateTime.now().millisecondsSinceEpoch, 
+      'nombre': 'Nuevo Explorador',
+      'edad': int.parse(_edadController.text),
+      'deseo_actual': 'conocer' 
+    });
+
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const PantallaRadar()),
+      );
+    }
   }
 
   @override
@@ -99,7 +103,6 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
               
               const SizedBox(height: 30),
               
-              // Solo mostrar el resto si la IA ya terminó
               if (_generoDetectado != null && !_procesandoIA) ...[
                 TextField(
                   controller: _edadController,
@@ -125,6 +128,52 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// Clase faltante añadida para el StreamBuilder del Radar
+class PantallaRadar extends StatelessWidget {
+  const PantallaRadar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final streamPerfiles = Supabase.instance.client.from('perfiles').stream(primaryKey: ['id']);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Radar Activo'),
+        centerTitle: true,
+        leading: const Icon(Icons.radar, color: Colors.greenAccent),
+      ),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: streamPerfiles,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          
+          final perfiles = snapshot.data!;
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: perfiles.length,
+            itemBuilder: (context, index) {
+              final perfil = perfiles[index];
+              return Card(
+                color: Colors.grey[900],
+                margin: const EdgeInsets.only(bottom: 15),
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Colors.greenAccent,
+                    child: Icon(Icons.person, color: Colors.black),
+                  ),
+                  title: Text('${perfil['nombre']} • ${perfil['edad']} años', 
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  subtitle: Text('Desea: ${perfil['deseo_actual']}'),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
