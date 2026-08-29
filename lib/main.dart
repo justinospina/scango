@@ -21,6 +21,7 @@ class ScanGoApp extends StatelessWidget {
     return MaterialApp(
       title: 'ScanGo',
       theme: ThemeData.dark(),
+      // Mantiene la sesión abierta automáticamente a menos que el usuario cierre sesión
       home: Supabase.instance.client.auth.currentSession == null
           ? const PantallaLogin()
           : const PantallaRadar(),
@@ -177,7 +178,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     try {
       final supabase = Supabase.instance.client;
       
-      // 1. Crear usuario en la bóveda de Auth
+      // 1. Crear usuario en la bóveda de Auth de forma segura
       final respuesta = await supabase.auth.signUp(
         email: email,
         password: password,
@@ -188,7 +189,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
 
       String? fotoUrl;
 
-      // 2. Subir la imagen al Supabase Storage usando el bucket correcto 'fotos-perfil'
+      // 2. Subir la foto al bucket 'fotos-perfil' del Storage
       if (!kIsWeb) {
         final file = File(_fotoPerfil!.path);
         final fileName = '${usuarioNuevo.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -196,7 +197,6 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         await supabase.storage.from('fotos-perfil').upload(fileName, file);
         fotoUrl = supabase.storage.from('fotos-perfil').getPublicUrl(fileName);
       } else {
-        // En Web subimos mediante bytes para compatibilidad multiplataforma
         final bytes = await _fotoPerfil!.readAsBytes();
         final fileName = '${usuarioNuevo.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
         
@@ -204,7 +204,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         fotoUrl = supabase.storage.from('fotos-perfil').getPublicUrl(fileName);
       }
 
-      // 3. Guardar datos en la tabla pública incluyendo la URL de la foto
+      // 3. Guardar la información completa y la URL de la foto en la tabla 'perfiles'
       await supabase.from('perfiles').upsert({
         'id': usuarioNuevo.id, 
         'nombre': 'Explorador',
@@ -395,6 +395,7 @@ class PantallaRadar extends StatelessWidget {
                 color: Colors.grey[900],
                 margin: const EdgeInsets.only(bottom: 15),
                 child: ListTile(
+                  // Carga y renderiza la foto de perfil real del usuario en la red
                   leading: CircleAvatar(
                     backgroundColor: Colors.greenAccent,
                     backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
