@@ -21,7 +21,6 @@ class ScanGoApp extends StatelessWidget {
     return MaterialApp(
       title: 'ScanGo',
       theme: ThemeData.dark(),
-      // Mantiene la sesión abierta automáticamente a menos que el usuario cierre sesión
       home: Supabase.instance.client.auth.currentSession == null
           ? const PantallaLogin()
           : const PantallaRadar(),
@@ -178,7 +177,6 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     try {
       final supabase = Supabase.instance.client;
       
-      // 1. Crear usuario en la bóveda de Auth de forma segura
       final respuesta = await supabase.auth.signUp(
         email: email,
         password: password,
@@ -189,7 +187,6 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
 
       String? fotoUrl;
 
-      // 2. Subir la foto al bucket 'fotos-perfil' del Storage
       if (!kIsWeb) {
         final file = File(_fotoPerfil!.path);
         final fileName = '${usuarioNuevo.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -204,7 +201,6 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         fotoUrl = supabase.storage.from('fotos-perfil').getPublicUrl(fileName);
       }
 
-      // 3. Guardar la información completa y la URL de la foto en la tabla 'perfiles'
       await supabase.from('perfiles').upsert({
         'id': usuarioNuevo.id, 
         'nombre': 'Explorador',
@@ -343,6 +339,64 @@ class PantallaRadar extends StatelessWidget {
     }
   }
 
+  // Función para mostrar el perfil detallado en una tarjeta flotante inferior
+  void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil) {
+    final fotoUrl = perfil['foto_url'];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 50,
+                backgroundColor: Colors.greenAccent,
+                backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
+                child: fotoUrl == null ? const Icon(Icons.person, size: 50, color: Colors.black) : null,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '${perfil['nombre']}, ${perfil['edad']} años',
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Género: ${perfil['genero'] ?? 'No especificado'}',
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Desea: ${perfil['deseo_actual']}',
+                style: const TextStyle(fontSize: 16, color: Colors.greenAccent),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context); // Cierra el modal
+                  enviarSolicitud(context, perfil['id']);
+                },
+                icon: const Icon(Icons.send),
+                label: const Text('Enviar Solicitud de Conexión'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.greenAccent,
+                  foregroundColor: Colors.black,
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final streamPerfiles = Supabase.instance.client.from('perfiles').stream(primaryKey: ['id']);
@@ -395,7 +449,8 @@ class PantallaRadar extends StatelessWidget {
                 color: Colors.grey[900],
                 margin: const EdgeInsets.only(bottom: 15),
                 child: ListTile(
-                  // Carga y renderiza la foto de perfil real del usuario en la red
+                  // Al hacer tap sobre la tarjeta o perfil, se abre la vista detallada
+                  onTap: () => _mostrarPerfilDetallado(context, perfil),
                   leading: CircleAvatar(
                     backgroundColor: Colors.greenAccent,
                     backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
