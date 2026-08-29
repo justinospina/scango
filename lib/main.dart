@@ -19,9 +19,10 @@ class ScanGoApp extends StatelessWidget {
     return MaterialApp(
       title: 'ScanGo',
       theme: ThemeData.dark(),
+      // La inicialización restaura la sesión de la memoria local automáticamente
       home: Supabase.instance.client.auth.currentSession == null
           ? const PantallaLogin()
-          : const PantallaOnboarding(),
+          : const PantallaRadar(), // Si ya hay sesión, va directo al radar
     );
   }
 }
@@ -43,14 +44,24 @@ class _PantallaLoginState extends State<PantallaLogin> {
     setState(() => _procesando = true);
 
     try {
-      await Supabase.instance.client.auth.signUp(
+      final respuesta = await Supabase.instance.client.auth.signUp(
         email: _emailController.text,
         password: _passwordController.text,
       );
+      
       if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const PantallaOnboarding()),
-        );
+        if (respuesta.session != null) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const PantallaOnboarding()),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Error: Apaga "Confirm email" en el panel de Supabase'), 
+              backgroundColor: Colors.orange
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -74,7 +85,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
       );
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const PantallaOnboarding()),
+          MaterialPageRoute(builder: (_) => const PantallaRadar()),
         );
       }
     } catch (e) {
