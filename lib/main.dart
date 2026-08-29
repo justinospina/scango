@@ -185,21 +185,18 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
       final usuarioNuevo = respuesta.user;
       if (usuarioNuevo == null) throw Exception('Error al generar la sesión en Supabase');
 
-      String? fotoUrl;
+      final fileName = '${usuarioNuevo.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
       if (!kIsWeb) {
         final file = File(_fotoPerfil!.path);
-        final fileName = '${usuarioNuevo.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        
         await supabase.storage.from('fotos-perfil').upload(fileName, file);
-        fotoUrl = supabase.storage.from('fotos-perfil').getPublicUrl(fileName);
       } else {
         final bytes = await _fotoPerfil!.readAsBytes();
-        final fileName = '${usuarioNuevo.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        
         await supabase.storage.from('fotos-perfil').uploadBinary(fileName, bytes);
-        fotoUrl = supabase.storage.from('fotos-perfil').getPublicUrl(fileName);
       }
+
+      // Obtenemos la URL pública limpia directamente del Storage
+      final fotoUrl = supabase.storage.from('fotos-perfil').getPublicUrl(fileName);
 
       await supabase.from('perfiles').upsert({
         'id': usuarioNuevo.id, 
@@ -339,9 +336,9 @@ class PantallaRadar extends StatelessWidget {
     }
   }
 
-  // Función para mostrar el perfil detallado en una tarjeta flotante inferior
   void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil) {
-    final fotoUrl = perfil['foto_url'];
+    final fotoUrl = perfil['foto_url']?.toString();
+    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
 
     showModalBottomSheet(
       context: context,
@@ -358,8 +355,8 @@ class PantallaRadar extends StatelessWidget {
               CircleAvatar(
                 radius: 50,
                 backgroundColor: Colors.greenAccent,
-                backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
-                child: fotoUrl == null ? const Icon(Icons.person, size: 50, color: Colors.black) : null,
+                backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
+                child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null,
               ),
               const SizedBox(height: 16),
               Text(
@@ -379,7 +376,7 @@ class PantallaRadar extends StatelessWidget {
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 onPressed: () {
-                  Navigator.pop(context); // Cierra el modal
+                  Navigator.pop(context);
                   enviarSolicitud(context, perfil['id']);
                 },
                 icon: const Icon(Icons.send),
@@ -443,18 +440,18 @@ class PantallaRadar extends StatelessWidget {
             itemCount: perfiles.length,
             itemBuilder: (context, index) {
               final perfil = perfiles[index];
-              final fotoUrl = perfil['foto_url'];
+              final fotoUrl = perfil['foto_url']?.toString();
+              final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
 
               return Card(
                 color: Colors.grey[900],
                 margin: const EdgeInsets.only(bottom: 15),
                 child: ListTile(
-                  // Al hacer tap sobre la tarjeta o perfil, se abre la vista detallada
                   onTap: () => _mostrarPerfilDetallado(context, perfil),
                   leading: CircleAvatar(
                     backgroundColor: Colors.greenAccent,
-                    backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
-                    child: fotoUrl == null ? const Icon(Icons.person, color: Colors.black) : null,
+                    backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
+                    child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null,
                   ),
                   title: Text('${perfil['nombre']} • ${perfil['edad']} años', 
                     style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
