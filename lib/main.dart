@@ -57,7 +57,6 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
     });
   }
 
-  // Se movió la función dentro de la clase para acceder al context y las variables
   Future<void> guardarPerfil() async {
     if (_edadController.text.isEmpty) return;
     
@@ -133,9 +132,33 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
   }
 }
 
-// Clase faltante añadida para el StreamBuilder del Radar
 class PantallaRadar extends StatelessWidget {
   const PantallaRadar({super.key});
+
+  Future<void> enviarSolicitud(BuildContext context, int receptorId) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final miId = DateTime.now().millisecondsSinceEpoch - 1000; 
+      
+      await supabase.from('solicitudes').insert({
+        'emisor_id': miId,
+        'receptor_id': receptorId,
+        'estado': 'pendiente'
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Solicitud enviada al usuario'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al conectar: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -143,7 +166,7 @@ class PantallaRadar extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Radar Activo'),
+        title: const Text('Radar Global'),
         centerTitle: true,
         leading: const Icon(Icons.radar, color: Colors.greenAccent),
       ),
@@ -169,6 +192,10 @@ class PantallaRadar extends StatelessWidget {
                   title: Text('${perfil['nombre']} • ${perfil['edad']} años', 
                     style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                   subtitle: Text('Desea: ${perfil['deseo_actual']}'),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.send, color: Colors.greenAccent),
+                    onPressed: () => enviarSolicitud(context, perfil['id']),
+                  ),
                 ),
               );
             },
