@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'dart:async';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -314,8 +315,116 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   }
 }
 
-class PantallaRadar extends StatelessWidget {
+class PantallaRadar extends StatefulWidget {
   const PantallaRadar({super.key});
+
+  @override
+  State<PantallaRadar> createState() => _PantallaRadarState();
+}
+
+class _PantallaRadarState extends State<PantallaRadar> {
+  StreamSubscription? _solicitudesSubscription;
+  final Set<String> _solicitudesNotificadas = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _escucharSolicitudesEntrantes();
+  }
+
+  void _escucharSolicitudesEntrantes() {
+    final miId = Supabase.instance.client.auth.currentUser?.id;
+    if (miId == null) return;
+
+    _solicitudesSubscription = Supabase.instance.client
+        .from('solicitudes')
+        .stream(primaryKey: ['id'])
+        .listen((solicitudes) async {
+      for (var s in solicitudes) {
+        if (s['receptor_id'] == miId && s['estado'] == 'pendiente') {
+          final solicitudId = s['id'].toString();
+          
+          if (!_solicitudesNotificadas.contains(solicitudId)) {
+            _solicitudesNotificadas.add(solicitudId);
+
+            // Consultar datos del emisor para mostrar su foto y nombre en la ventana emergente
+            final emisorData = await Supabase.instance.client
+                .from('perfiles')
+                .select()
+                .eq('id', s['emisor_id'])
+                .maybeSingle();
+
+            if (emisorData != null && mounted) {
+              _mostrarAlertaSolicitud(context, solicitudId, emisorData);
+            }
+          }
+        }
+      }
+    });
+  }
+
+  void _mostrarAlertaSolicitud(BuildContext context, String solicitudId, Map<String, dynamic> emisor) {
+    final fotoUrl = emisor['foto_url']?.toString();
+    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text('¡Nueva solicitud de conexión!', style: TextStyle(color: Colors.greenAccent)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 45,
+                backgroundColor: Colors.greenAccent,
+                backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
+                child: !tieneFoto ? const Icon(Icons.person, size: 45, color: Colors.black) : null,
+              ),
+              const SizedBox(height: 15),
+              Text(
+                '${emisor['nombre']} (${emisor['edad']} años)',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              const SizedBox(height: 8),
+              const Text('Quiere conectar contigo en el radar.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await Supabase.instance.client
+                    .from('solicitudes')
+                    .update({'estado': 'rechazada'})
+                    .eq('id', solicitudId);
+              },
+              child: const Text('Rechazar', style: TextStyle(color: Colors.red)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
+              onPressed: () async {
+                Navigator.pop(context);
+                await Supabase.instance.client
+                    .from('solicitudes')
+                    .update({'estado': 'aceptada'})
+                    .eq('id', solicitudId);
+              },
+              child: const Text('Aceptar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _solicitudesSubscription?.cancel();
+    super.dispose();
+  }
 
   Future<void> enviarSolicitud(BuildContext context, String receptorId) async {
     try {
@@ -653,7 +762,7 @@ class _PantallaChatState extends State<PantallaChat> {
                   itemCount: mensajes.length,
                   itemBuilder: (context, index) {
                     final mensaje = mensajes[index];
-                    final esMio = mensaje['emisor_id'] == miId; // Corregido a esMio
+                    final esMio = mensaje['emisor_id'] == miId;
 
                     return Align(
                       alignment: esMio ? Alignment.centerRight : Alignment.centerLeft,
