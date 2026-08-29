@@ -34,14 +34,19 @@ class PantallaLogin extends StatefulWidget {
 }
 
 class _PantallaLoginState extends State<PantallaLogin> {
-  bool _ingresando = false;
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _procesando = false;
 
-  Future<void> entrarComoInvitado() async {
-    setState(() => _ingresando = true);
+  Future<void> registrarCuenta() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) return;
+    setState(() => _procesando = true);
 
     try {
-      await Supabase.instance.client.auth.signInAnonymously();
-      
+      await Supabase.instance.client.auth.signUp(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const PantallaOnboarding()),
@@ -50,37 +55,91 @@ class _PantallaLoginState extends State<PantallaLogin> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Error al registrar: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
-      if (mounted) setState(() => _ingresando = false);
+      if (mounted) setState(() => _procesando = false);
     }
+  }
+
+  Future<void> iniciarSesion() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) return;
+    setState(() => _procesando = true);
+
+    try {
+      await Supabase.instance.client.auth.signInWithPassword(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const PantallaOnboarding()),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Credenciales incorrectas'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _procesando = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Acceso de Pruebas')),
+      appBar: AppBar(title: const Text('Acceso a ScanGo')),
       body: Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(20.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.radar, size: 100, color: Colors.greenAccent),
-              const SizedBox(height: 40),
-              _ingresando
+              const SizedBox(height: 30),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 25),
+              _procesando
                   ? const CircularProgressIndicator()
-                  : ElevatedButton.icon(
-                      onPressed: entrarComoInvitado,
-                      icon: const Icon(Icons.login),
-                      label: const Text('Entrar Directamente al Radar'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.greenAccent, 
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15)
-                      ),
+                  : Column(
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: iniciarSesion,
+                          icon: const Icon(Icons.login),
+                          label: const Text('Iniciar Sesión'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.greenAccent, 
+                            foregroundColor: Colors.black,
+                            minimumSize: const Size(double.infinity, 50)
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: registrarCuenta,
+                          style: TextButton.styleFrom(foregroundColor: Colors.greenAccent),
+                          child: const Text('Crear cuenta nueva'),
+                        )
+                      ],
                     )
             ],
           ),
