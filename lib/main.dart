@@ -19,7 +19,79 @@ class ScanGoApp extends StatelessWidget {
     return MaterialApp(
       title: 'ScanGo',
       theme: ThemeData.dark(),
-      home: const PantallaOnboarding(),
+      // Define la pantalla inicial evaluando si el usuario ya inició sesión
+      home: Supabase.instance.client.auth.currentSession == null
+          ? const PantallaLogin()
+          : const PantallaOnboarding(),
+    );
+  }
+}
+
+class PantallaLogin extends StatefulWidget {
+  const PantallaLogin({super.key});
+
+  @override
+  State<PantallaLogin> createState() => _PantallaLoginState();
+}
+
+class _PantallaLoginState extends State<PantallaLogin> {
+  final _emailController = TextEditingController();
+  bool _enviandoLink = false;
+
+  Future<void> iniciarConMagicLink() async {
+    if (_emailController.text.isEmpty) return;
+    setState(() => _enviandoLink = true);
+
+    try {
+      await Supabase.instance.client.auth.signInWithOtp(
+        email: _emailController.text,
+        emailRedirectTo: 'https://justinospina.github.io/scango/', 
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('¡Enlace enviado! Revisa tu correo.'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _enviandoLink = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Acceso a ScanGo')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.radar, size: 100, color: Colors.greenAccent),
+              const SizedBox(height: 30),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 20),
+              _enviandoLink
+                  ? const CircularProgressIndicator()
+                  : ElevatedButton(
+                      onPressed: iniciarConMagicLink,
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
+                      child: const Text('Enviar Magic Link'),
+                    )
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -43,18 +115,9 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
   Future<void> procesarFoto() async {
     final XFile? foto = await _picker.pickImage(source: ImageSource.camera);
     if (foto == null) return;
-
-    setState(() {
-      _fotoPerfil = foto;
-      _procesandoIA = true;
-    });
-
+    setState(() { _fotoPerfil = foto; _procesandoIA = true; });
     await Future.delayed(const Duration(seconds: 2));
-
-    setState(() {
-      _procesandoIA = false;
-      _generoDetectado = 'HOMBRE'; 
-    });
+    setState(() { _procesandoIA = false; _generoDetectado = 'HOMBRE'; });
   }
   
   Future<void> guardarPerfil() async {
@@ -62,11 +125,16 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
     
     try {
       final supabase = Supabase.instance.client;
-      await supabase.from('perfiles').insert({
-        'id': DateTime.now().millisecondsSinceEpoch, 
-        'nombre': 'Nuevo Explorador',
+      final usuarioActual = supabase.auth.currentUser;
+      if (usuarioActual == null) throw Exception('No hay sesión activa');
+
+      await supabase.from('perfiles').upsert({
+        'id': usuarioActual.id, // ID oficial de la autenticación
+        'nombre': 'Explorador',
         'edad': int.parse(_edadController.text),
-        'deseo_actual': 'conocer' 
+        'deseo_actual': 'conocer',
+        'genero': _generoDetectado,
+        'preferencia': _preferencia
       });
 
       if (mounted) {
@@ -77,10 +145,7 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error en la base de datos: $e'), 
-            backgroundColor: Colors.red
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -110,9 +175,7 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
                 else
                   Text('IA Detectó: $_generoDetectado', style: const TextStyle(fontSize: 20)),
               ],
-              
               const SizedBox(height: 30),
-              
               if (_generoDetectado != null && !_procesandoIA) ...[
                 TextField(
                   controller: _edadController,
@@ -146,26 +209,27 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
 class PantallaRadar extends StatelessWidget {
   const PantallaRadar({super.key});
 
-  Future<void> enviarSolicitud(BuildContext context, int receptorId) async {
+  Future<void> enviarSolicitud(BuildContext context, String receptorId) async {
     try {
       final supabase = Supabase.instance.client;
-      final miId = DateTime.now().millisecondsSinceEpoch - 1000; 
+      final usuarioActual = supabase.auth.currentUser;
+      if (usuarioActual == null) return;
       
       await supabase.from('solicitudes').insert({
-        'emisor_id': miId,
+        'emisor_id': usuarioActual.id,
         'receptor_id': receptorId,
         'estado': 'pendiente'
       });
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Solicitud enviada al usuario'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Solicitud enviada'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al conectar: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -174,19 +238,34 @@ class PantallaRadar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final streamPerfiles = Supabase.instance.client.from('perfiles').stream(primaryKey: ['id']);
+    final miId = Supabase.instance.client.auth.currentUser?.id;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Radar Global'),
         centerTitle: true,
         leading: const Icon(Icons.radar, color: Colors.greenAccent),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await Supabase.instance.client.auth.signOut();
+              if (context.mounted) {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const PantallaLogin())
+                );
+              }
+            },
+          )
+        ],
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: streamPerfiles,
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           
-          final perfiles = snapshot.data!;
+          final perfiles = snapshot.data!.where((p) => p['id'] != miId).toList();
+          
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: perfiles.length,
