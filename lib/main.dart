@@ -19,7 +19,6 @@ class ScanGoApp extends StatelessWidget {
     return MaterialApp(
       title: 'ScanGo',
       theme: ThemeData.dark(),
-      // Define la pantalla inicial evaluando si el usuario ya inició sesión
       home: Supabase.instance.client.auth.currentSession == null
           ? const PantallaLogin()
           : const PantallaOnboarding(),
@@ -35,21 +34,17 @@ class PantallaLogin extends StatefulWidget {
 }
 
 class _PantallaLoginState extends State<PantallaLogin> {
-  final _emailController = TextEditingController();
-  bool _enviandoLink = false;
+  bool _ingresando = false;
 
-  Future<void> iniciarConMagicLink() async {
-    if (_emailController.text.isEmpty) return;
-    setState(() => _enviandoLink = true);
+  Future<void> entrarComoInvitado() async {
+    setState(() => _ingresando = true);
 
     try {
-      await Supabase.instance.client.auth.signInWithOtp(
-        email: _emailController.text,
-        emailRedirectTo: 'https://justinospina.github.io/scango/', 
-      );
+      await Supabase.instance.client.auth.signInAnonymously();
+      
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('¡Enlace enviado! Revisa tu correo.'), backgroundColor: Colors.green),
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const PantallaOnboarding()),
         );
       }
     } catch (e) {
@@ -59,14 +54,14 @@ class _PantallaLoginState extends State<PantallaLogin> {
         );
       }
     } finally {
-      if (mounted) setState(() => _enviandoLink = false);
+      if (mounted) setState(() => _ingresando = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Acceso a ScanGo')),
+      appBar: AppBar(title: const Text('Acceso de Pruebas')),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
@@ -74,19 +69,18 @@ class _PantallaLoginState extends State<PantallaLogin> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.radar, size: 100, color: Colors.greenAccent),
-              const SizedBox(height: 30),
-              TextField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 20),
-              _enviandoLink
+              const SizedBox(height: 40),
+              _ingresando
                   ? const CircularProgressIndicator()
-                  : ElevatedButton(
-                      onPressed: iniciarConMagicLink,
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
-                      child: const Text('Enviar Magic Link'),
+                  : ElevatedButton.icon(
+                      onPressed: entrarComoInvitado,
+                      icon: const Icon(Icons.login),
+                      label: const Text('Entrar Directamente al Radar'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.greenAccent, 
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15)
+                      ),
                     )
             ],
           ),
@@ -129,7 +123,7 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
       if (usuarioActual == null) throw Exception('No hay sesión activa');
 
       await supabase.from('perfiles').upsert({
-        'id': usuarioActual.id, // ID oficial de la autenticación
+        'id': usuarioActual.id, 
         'nombre': 'Explorador',
         'edad': int.parse(_edadController.text),
         'deseo_actual': 'conocer',
@@ -265,6 +259,15 @@ class PantallaRadar extends StatelessWidget {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           
           final perfiles = snapshot.data!.where((p) => p['id'] != miId).toList();
+          
+          if (perfiles.isEmpty) {
+            return const Center(
+              child: Text(
+                'No hay exploradores cerca de ti aún.',
+                style: TextStyle(fontSize: 18, color: Colors.grey),
+              ),
+            );
+          }
           
           return ListView.builder(
             padding: const EdgeInsets.all(16),
