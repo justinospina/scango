@@ -143,6 +143,7 @@ class PantallaRegistro extends StatefulWidget {
 class _PantallaRegistroState extends State<PantallaRegistro> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _nombreController = TextEditingController(); // Controlador para el nombre
   final _edadController = TextEditingController();
   
   final ImagePicker _picker = ImagePicker();
@@ -163,9 +164,10 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   Future<void> registrarYGuardar() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
+    final nombre = _nombreController.text.trim();
     final edad = _edadController.text.trim();
 
-    if (email.isEmpty || password.isEmpty || edad.isEmpty || _generoDetectado == null || _fotoPerfil == null) {
+    if (email.isEmpty || password.isEmpty || nombre.isEmpty || edad.isEmpty || _generoDetectado == null || _fotoPerfil == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Por favor completa todos los campos y toma tu foto'), backgroundColor: Colors.orange),
       );
@@ -195,12 +197,12 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         await supabase.storage.from('fotos-perfil').uploadBinary(fileName, bytes);
       }
 
-      // Obtenemos la URL pública limpia directamente del Storage
       final fotoUrl = supabase.storage.from('fotos-perfil').getPublicUrl(fileName);
 
+      // Guardamos el nombre ingresado por el usuario en lugar de 'Explorador'
       await supabase.from('perfiles').upsert({
         'id': usuarioNuevo.id, 
-        'nombre': 'Explorador',
+        'nombre': nombre,
         'edad': int.parse(edad),
         'deseo_actual': 'conocer',
         'genero': _generoDetectado,
@@ -229,6 +231,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _nombreController.dispose();
     _edadController.dispose();
     super.dispose();
   }
@@ -253,6 +256,11 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                 controller: _passwordController,
                 obscureText: true,
                 decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: _nombreController,
+                decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 25),
               if (_fotoPerfil == null)
