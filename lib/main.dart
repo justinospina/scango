@@ -19,10 +19,9 @@ class ScanGoApp extends StatelessWidget {
     return MaterialApp(
       title: 'ScanGo',
       theme: ThemeData.dark(),
-      // La inicialización restaura la sesión de la memoria local automáticamente
       home: Supabase.instance.client.auth.currentSession == null
           ? const PantallaLogin()
-          : const PantallaRadar(), // Si ya hay sesión, va directo al radar
+          : const PantallaRadar(), 
     );
   }
 }
@@ -40,13 +39,16 @@ class _PantallaLoginState extends State<PantallaLogin> {
   bool _procesando = false;
 
   Future<void> registrarCuenta() async {
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) return;
+    final emailLimpio = _emailController.text.trim();
+    final passwordLimpio = _passwordController.text.trim();
+
+    if (emailLimpio.isEmpty || passwordLimpio.isEmpty) return;
     setState(() => _procesando = true);
 
     try {
       final respuesta = await Supabase.instance.client.auth.signUp(
-        email: _emailController.text,
-        password: _passwordController.text,
+        email: emailLimpio,
+        password: passwordLimpio,
       );
       
       if (mounted) {
@@ -75,13 +77,16 @@ class _PantallaLoginState extends State<PantallaLogin> {
   }
 
   Future<void> iniciarSesion() async {
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) return;
+    final emailLimpio = _emailController.text.trim();
+    final passwordLimpio = _passwordController.text.trim();
+
+    if (emailLimpio.isEmpty || passwordLimpio.isEmpty) return;
     setState(() => _procesando = true);
 
     try {
       await Supabase.instance.client.auth.signInWithPassword(
-        email: _emailController.text,
-        password: _passwordController.text,
+        email: emailLimpio,
+        password: passwordLimpio,
       );
       if (mounted) {
         Navigator.of(context).pushReplacement(
@@ -91,7 +96,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Credenciales incorrectas'), backgroundColor: Colors.red),
+          const SnackBar(content: Text('Credenciales incorrectas'), backgroundColor: Colors.red),
         );
       }
     } finally {
