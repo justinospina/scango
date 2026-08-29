@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -151,7 +153,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   String _preferencia = 'AMBAS';
 
   Future<void> procesarFoto() async {
-    final XFile? foto = await _picker.pickImage(source: ImageSource.camera);
+    final XFile? foto = await _picker.pickImage(source: ImageSource.camera, maxWidth: 600);
     if (foto == null) return;
     setState(() { _fotoPerfil = foto; _procesandoIA = true; });
     await Future.delayed(const Duration(seconds: 2));
@@ -163,9 +165,9 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     final password = _passwordController.text.trim();
     final edad = _edadController.text.trim();
 
-    if (email.isEmpty || password.isEmpty || edad.isEmpty || _generoDetectado == null) {
+    if (email.isEmpty || password.isEmpty || edad.isEmpty || _generoDetectado == null || _fotoPerfil == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor completa todos los campos y la foto'), backgroundColor: Colors.orange),
+        const SnackBar(content: Text('Por favor completa todos los campos y toma tu foto'), backgroundColor: Colors.orange),
       );
       return;
     }
@@ -174,6 +176,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
 
     try {
       final supabase = Supabase.instance.client;
+      
       // 1. Crear usuario en la bóveda de Auth
       final respuesta = await supabase.auth.signUp(
         email: email,
@@ -183,18 +186,36 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
       final usuarioNuevo = respuesta.user;
       if (usuarioNuevo == null) throw Exception('Error al generar la sesión en Supabase');
 
-      // 2. Guardar datos en la tabla pública usando el ID recién creado
+      String? fotoUrl;
+
+      // 2. Subir la imagen al Supabase Storage usando el bucket correcto 'fotos-perfil'
+      if (!kIsWeb) {
+        final file = File(_fotoPerfil!.path);
+        final fileName = '${usuarioNuevo.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        
+        await supabase.storage.from('fotos-perfil').upload(fileName, file);
+        fotoUrl = supabase.storage.from('fotos-perfil').getPublicUrl(fileName);
+      } else {
+        // En Web subimos mediante bytes para compatibilidad multiplataforma
+        final bytes = await _fotoPerfil!.readAsBytes();
+        final fileName = '${usuarioNuevo.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        
+        await supabase.storage.from('fotos-perfil').uploadBinary(fileName, bytes);
+        fotoUrl = supabase.storage.from('fotos-perfil').getPublicUrl(fileName);
+      }
+
+      // 3. Guardar datos en la tabla pública incluyendo la URL de la foto
       await supabase.from('perfiles').upsert({
         'id': usuarioNuevo.id, 
         'nombre': 'Explorador',
         'edad': int.parse(edad),
         'deseo_actual': 'conocer',
         'genero': _generoDetectado,
-        'preferencia': _preferencia
+        'preferencia': _preferencia,
+        'foto_url': fotoUrl,
       });
 
       if (mounted) {
-        // Redirige al Radar y limpia el historial de navegación
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const PantallaRadar()),
           (route) => false,
@@ -368,13 +389,16 @@ class PantallaRadar extends StatelessWidget {
             itemCount: perfiles.length,
             itemBuilder: (context, index) {
               final perfil = perfiles[index];
+              final fotoUrl = perfil['foto_url'];
+
               return Card(
                 color: Colors.grey[900],
                 margin: const EdgeInsets.only(bottom: 15),
                 child: ListTile(
-                  leading: const CircleAvatar(
+                  leading: CircleAvatar(
                     backgroundColor: Colors.greenAccent,
-                    child: Icon(Icons.person, color: Colors.black),
+                    backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
+                    child: fotoUrl == null ? const Icon(Icons.person, color: Colors.black) : null,
                   ),
                   title: Text('${perfil['nombre']} • ${perfil['edad']} años', 
                     style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
