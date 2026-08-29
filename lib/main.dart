@@ -21,7 +21,7 @@ class ScanGoApp extends StatelessWidget {
       theme: ThemeData.dark(),
       home: Supabase.instance.client.auth.currentSession == null
           ? const PantallaLogin()
-          : const PantallaRadar(), 
+          : const PantallaRadar(),
     );
   }
 }
@@ -37,44 +37,6 @@ class _PantallaLoginState extends State<PantallaLogin> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _procesando = false;
-
-  Future<void> registrarCuenta() async {
-    final emailLimpio = _emailController.text.trim();
-    final passwordLimpio = _passwordController.text.trim();
-
-    if (emailLimpio.isEmpty || passwordLimpio.isEmpty) return;
-    setState(() => _procesando = true);
-
-    try {
-      final respuesta = await Supabase.instance.client.auth.signUp(
-        email: emailLimpio,
-        password: passwordLimpio,
-      );
-      
-      if (mounted) {
-        if (respuesta.session != null) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const PantallaOnboarding()),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Error: Apaga "Confirm email" en el panel de Supabase'), 
-              backgroundColor: Colors.orange
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al registrar: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _procesando = false);
-    }
-  }
 
   Future<void> iniciarSesion() async {
     final emailLimpio = _emailController.text.trim();
@@ -151,7 +113,11 @@ class _PantallaLoginState extends State<PantallaLogin> {
                         ),
                         const SizedBox(height: 10),
                         TextButton(
-                          onPressed: registrarCuenta,
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const PantallaRegistro()),
+                            );
+                          },
                           style: TextButton.styleFrom(foregroundColor: Colors.greenAccent),
                           child: const Text('Crear cuenta nueva'),
                         )
@@ -165,20 +131,23 @@ class _PantallaLoginState extends State<PantallaLogin> {
   }
 }
 
-class PantallaOnboarding extends StatefulWidget {
-  const PantallaOnboarding({super.key});
+class PantallaRegistro extends StatefulWidget {
+  const PantallaRegistro({super.key});
 
   @override
-  State<PantallaOnboarding> createState() => _PantallaOnboardingState();
+  State<PantallaRegistro> createState() => _PantallaRegistroState();
 }
 
-class _PantallaOnboardingState extends State<PantallaOnboarding> {
+class _PantallaRegistroState extends State<PantallaRegistro> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _edadController = TextEditingController();
+  
   final ImagePicker _picker = ImagePicker();
   XFile? _fotoPerfil;
+  bool _procesando = false;
   bool _procesandoIA = false;
   String? _generoDetectado;
-  
-  final TextEditingController _edadController = TextEditingController();
   String _preferencia = 'AMBAS';
 
   Future<void> procesarFoto() async {
@@ -188,27 +157,47 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
     await Future.delayed(const Duration(seconds: 2));
     setState(() { _procesandoIA = false; _generoDetectado = 'HOMBRE'; });
   }
-  
-  Future<void> guardarPerfil() async {
-    if (_edadController.text.isEmpty) return;
-    
+
+  Future<void> registrarYGuardar() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final edad = _edadController.text.trim();
+
+    if (email.isEmpty || password.isEmpty || edad.isEmpty || _generoDetectado == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor completa todos los campos y la foto'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    setState(() => _procesando = true);
+
     try {
       final supabase = Supabase.instance.client;
-      final usuarioActual = supabase.auth.currentUser;
-      if (usuarioActual == null) throw Exception('No hay sesión activa');
+      // 1. Crear usuario en la bóveda de Auth
+      final respuesta = await supabase.auth.signUp(
+        email: email,
+        password: password,
+      );
 
+      final usuarioNuevo = respuesta.user;
+      if (usuarioNuevo == null) throw Exception('Error al generar la sesión en Supabase');
+
+      // 2. Guardar datos en la tabla pública usando el ID recién creado
       await supabase.from('perfiles').upsert({
-        'id': usuarioActual.id, 
+        'id': usuarioNuevo.id, 
         'nombre': 'Explorador',
-        'edad': int.parse(_edadController.text),
+        'edad': int.parse(edad),
         'deseo_actual': 'conocer',
         'genero': _generoDetectado,
         'preferencia': _preferencia
       });
 
       if (mounted) {
-        Navigator.of(context).pushReplacement(
+        // Redirige al Radar y limpia el historial de navegación
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const PantallaRadar()),
+          (route) => false,
         );
       }
     } catch (e) {
@@ -217,24 +206,47 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
+    } finally {
+      if (mounted) setState(() => _procesando = false);
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _edadController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Crea tu Perfil ScanGo')),
+      appBar: AppBar(title: const Text('Crea tu Cuenta')),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 25),
               if (_fotoPerfil == null)
                 ElevatedButton.icon(
                   onPressed: procesarFoto,
                   icon: const Icon(Icons.camera_alt),
                   label: const Text('Tomar Foto para Análisis IA'),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800], foregroundColor: Colors.white),
                 )
               else ...[
                 const Icon(Icons.check_circle, color: Colors.green, size: 50),
@@ -242,16 +254,16 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
                 if (_procesandoIA)
                   const CircularProgressIndicator()
                 else
-                  Text('IA Detectó: $_generoDetectado', style: const TextStyle(fontSize: 20)),
+                  Text('IA Detectó: $_generoDetectado', style: const TextStyle(fontSize: 20, color: Colors.greenAccent)),
               ],
-              const SizedBox(height: 30),
+              const SizedBox(height: 25),
               if (_generoDetectado != null && !_procesandoIA) ...[
                 TextField(
                   controller: _edadController,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: 'Ingresa tu Edad', border: OutlineInputBorder()),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 15),
                 DropdownButtonFormField<String>(
                   value: _preferencia,
                   decoration: const InputDecoration(labelText: 'Preferencia', border: OutlineInputBorder()),
@@ -261,11 +273,17 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
                   onChanged: (value) => setState(() => _preferencia = value!),
                 ),
                 const SizedBox(height: 30),
-                ElevatedButton(
-                  onPressed: guardarPerfil,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
-                  child: const Text('Continuar al Radar'),
-                )
+                _procesando
+                    ? const CircularProgressIndicator()
+                    : ElevatedButton(
+                        onPressed: registrarYGuardar,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.greenAccent, 
+                          foregroundColor: Colors.black,
+                          minimumSize: const Size(double.infinity, 50)
+                        ),
+                        child: const Text('Completar Registro'),
+                      )
               ]
             ],
           ),
@@ -320,8 +338,9 @@ class PantallaRadar extends StatelessWidget {
             onPressed: () async {
               await Supabase.instance.client.auth.signOut();
               if (context.mounted) {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const PantallaLogin())
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const PantallaLogin()),
+                  (route) => false,
                 );
               }
             },
