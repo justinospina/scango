@@ -6,7 +6,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(
     url: 'https://zlslfegiqpgdjxoexlta.supabase.co',
-    anonKey: 'AQUÍ_PEGA_TU_LLAVE_sb_publishable...', 
+    anonKey: 'sb_publishable_iVJD8SvV1jtbM-hMVGAsGQ_XTT60Cdk', 
   );
   runApp(const ScanGoApp());
 }
@@ -69,14 +69,12 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
         'deseo_actual': 'conocer' 
       });
 
-      // Si guarda exitosamente, navega al radar
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const PantallaRadar()),
         );
       }
     } catch (e) {
-      // Si Supabase bloquea la acción, mostrará este error rojo
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -87,8 +85,6 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
       }
     }
   }
-
-
 
   @override
   Widget build(BuildContext context) {
