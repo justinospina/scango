@@ -412,7 +412,6 @@ class PantallaRadar extends StatelessWidget {
         centerTitle: true,
         leading: const Icon(Icons.radar, color: Colors.greenAccent),
         actions: [
-          // Botón para ver la bandeja de solicitudes y chats activos
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline),
             onPressed: () {
@@ -510,7 +509,6 @@ class PantallaSolicitudes extends StatelessWidget {
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-          // Filtramos solicitudes donde somos el receptor (pendientes) o donde ya fueron aceptadas
           final solicitudes = snapshot.data!;
           
           return FutureBuilder<List<Map<String, dynamic>>>(
@@ -655,7 +653,7 @@ class _PantallaChatState extends State<PantallaChat> {
                   itemCount: mensajes.length,
                   itemBuilder: (context, index) {
                     final mensaje = mensajes[index];
-                    final esMio = mensaje['emisor_id'] == miId;
+                    final esMio = mensaje['emisor_id'] == miId; // Corregido a esMio
 
                     return Align(
                       alignment: esMio ? Alignment.centerRight : Alignment.centerLeft,
