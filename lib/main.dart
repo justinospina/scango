@@ -56,24 +56,39 @@ class _PantallaOnboardingState extends State<PantallaOnboarding> {
       _generoDetectado = 'HOMBRE'; 
     });
   }
-
+  
   Future<void> guardarPerfil() async {
     if (_edadController.text.isEmpty) return;
     
-    final supabase = Supabase.instance.client;
-    await supabase.from('perfiles').insert({
-      'id': DateTime.now().millisecondsSinceEpoch, 
-      'nombre': 'Nuevo Explorador',
-      'edad': int.parse(_edadController.text),
-      'deseo_actual': 'conocer' 
-    });
+    try {
+      final supabase = Supabase.instance.client;
+      await supabase.from('perfiles').insert({
+        'id': DateTime.now().millisecondsSinceEpoch, 
+        'nombre': 'Nuevo Explorador',
+        'edad': int.parse(_edadController.text),
+        'deseo_actual': 'conocer' 
+      });
 
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const PantallaRadar()),
-      );
+      // Si guarda exitosamente, navega al radar
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const PantallaRadar()),
+        );
+      }
+    } catch (e) {
+      // Si Supabase bloquea la acción, mostrará este error rojo
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error en la base de datos: $e'), 
+            backgroundColor: Colors.red
+          ),
+        );
+      }
     }
   }
+
+
 
   @override
   Widget build(BuildContext context) {
