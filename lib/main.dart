@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
-import 'package:geolocator/geolocator.dart'; // Nueva dependencia requerida
+import 'package:geolocator/geolocator.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,14 +39,66 @@ class PantallaPrincipal extends StatefulWidget {
 
 class _PantallaPrincipalState extends State<PantallaPrincipal> {
   int _indiceActual = 0;
+  double? _miLatitud;
+  double? _miLongitud;
   
-  final List<Widget> _pantallas = [
-    const PantallaRadar(),
-    const PantallaMiPerfil(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _obtenerYGuardarGPS();
+  }
+
+  // Se ejecuta al iniciar sesión o abrir la app para asegurar que Supabase tenga la ubicación
+  Future<void> _obtenerYGuardarGPS() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Activa el GPS de tu dispositivo'), backgroundColor: Colors.orange));
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Permiso de ubicación denegado'), backgroundColor: Colors.red));
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Permisos de ubicación bloqueados en el navegador/app'), backgroundColor: Colors.red));
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      
+      if (mounted) {
+        setState(() {
+          _miLatitud = position.latitude;
+          _miLongitud = position.longitude;
+        });
+      }
+
+      final miId = Supabase.instance.client.auth.currentUser?.id;
+      if (miId != null) {
+        await Supabase.instance.client.from('perfiles').update({
+          'latitud': position.latitude,
+          'longitud': position.longitude,
+        }).eq('id', miId);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('📍 Ubicación actualizada'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error GPS: $e'), backgroundColor: Colors.red));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> pantallas = [
+      PantallaRadar(miLatitud: _miLatitud, miLongitud: _miLongitud),
+      const PantallaMiPerfil(),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_indiceActual == 0 ? 'Radar Global' : 'Mi Perfil'),
@@ -77,7 +129,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       ),
       body: IndexedStack(
         index: _indiceActual,
-        children: _pantallas,
+        children: pantallas,
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _indiceActual,
@@ -114,21 +166,12 @@ class _PantallaLoginState extends State<PantallaLogin> {
     setState(() => _procesando = true);
 
     try {
-      await Supabase.instance.client.auth.signInWithPassword(
-        email: emailLimpio,
-        password: passwordLimpio,
-      );
+      await Supabase.instance.client.auth.signInWithPassword(email: emailLimpio, password: passwordLimpio);
       if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const PantallaPrincipal()),
-        );
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const PantallaPrincipal()));
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Credenciales incorrectas'), backgroundColor: Colors.red),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credenciales incorrectas'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _procesando = false);
     }
@@ -146,17 +189,9 @@ class _PantallaLoginState extends State<PantallaLogin> {
             children: [
               const Icon(Icons.radar, size: 100, color: Colors.greenAccent),
               const SizedBox(height: 30),
-              TextField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder()),
-              ),
+              TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder())),
               const SizedBox(height: 15),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder()),
-              ),
+              TextField(controller: _passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder())),
               const SizedBox(height: 25),
               _procesando
                   ? const CircularProgressIndicator()
@@ -166,19 +201,11 @@ class _PantallaLoginState extends State<PantallaLogin> {
                           onPressed: iniciarSesion,
                           icon: const Icon(Icons.login),
                           label: const Text('Iniciar Sesión'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.greenAccent, 
-                            foregroundColor: Colors.black,
-                            minimumSize: const Size(double.infinity, 50)
-                          ),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
                         ),
                         const SizedBox(height: 10),
                         TextButton(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => const PantallaRegistro()),
-                            );
-                          },
+                          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PantallaRegistro())),
                           style: TextButton.styleFrom(foregroundColor: Colors.greenAccent),
                           child: const Text('Crear cuenta nueva'),
                         )
@@ -204,7 +231,6 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   final _passwordController = TextEditingController();
   final _nombreController = TextEditingController();
   final _edadController = TextEditingController();
-  
   final ImagePicker _picker = ImagePicker();
   XFile? _fotoPerfil;
   bool _procesando = false;
@@ -227,9 +253,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     final edad = _edadController.text.trim();
 
     if (email.isEmpty || password.isEmpty || nombre.isEmpty || edad.isEmpty || _generoDetectado == null || _fotoPerfil == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor completa todos los campos y toma tu foto'), backgroundColor: Colors.orange),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor completa todos los campos y toma tu foto'), backgroundColor: Colors.orange));
       return;
     }
 
@@ -239,18 +263,14 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
       final supabase = Supabase.instance.client;
       final respuesta = await supabase.auth.signUp(email: email, password: password);
       final usuarioNuevo = respuesta.user;
-      if (usuarioNuevo == null) throw Exception('Error al generar la sesión en Supabase');
+      if (usuarioNuevo == null) throw Exception('Error al generar sesión');
 
       final fileName = '${usuarioNuevo.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
       if (!kIsWeb) {
-        final file = File(_fotoPerfil!.path);
-        await supabase.storage.from('fotos-perfil').upload(fileName, file);
+        await supabase.storage.from('fotos-perfil').upload(fileName, File(_fotoPerfil!.path));
       } else {
-        final bytes = await _fotoPerfil!.readAsBytes();
-        await supabase.storage.from('fotos-perfil').uploadBinary(fileName, bytes);
+        await supabase.storage.from('fotos-perfil').uploadBinary(fileName, await _fotoPerfil!.readAsBytes());
       }
-
       final fotoUrl = supabase.storage.from('fotos-perfil').getPublicUrl(fileName);
 
       await supabase.from('perfiles').upsert({
@@ -263,16 +283,9 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         'foto_url': fotoUrl,
       });
 
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const PantallaPrincipal()),
-          (route) => false,
-        );
-      }
+      if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PantallaPrincipal()), (route) => false);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _procesando = false);
     }
@@ -335,7 +348,9 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
 }
 
 class PantallaRadar extends StatefulWidget {
-  const PantallaRadar({super.key});
+  final double? miLatitud;
+  final double? miLongitud;
+  const PantallaRadar({super.key, this.miLatitud, this.miLongitud});
 
   @override
   State<PantallaRadar> createState() => _PantallaRadarState();
@@ -344,74 +359,25 @@ class PantallaRadar extends StatefulWidget {
 class _PantallaRadarState extends State<PantallaRadar> {
   StreamSubscription? _solicitudesSubscription;
   final Set<String> _solicitudesNotificadas = {};
-  double? _miLatitud;
-  double? _miLongitud;
 
   @override
   void initState() {
     super.initState();
-    _actualizarUbicacionGPS();
     _escucharSolicitudesEntrantes();
-  }
-
-  // Obtenemos GPS y lo guardamos en Supabase para que otros puedan calcular la distancia
-  Future<void> _actualizarUbicacionGPS() async {
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) return;
-      }
-      if (permission == LocationPermission.deniedForever) return;
-
-      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      
-      if (mounted) {
-        setState(() {
-          _miLatitud = position.latitude;
-          _miLongitud = position.longitude;
-        });
-      }
-
-      final miId = Supabase.instance.client.auth.currentUser?.id;
-      if (miId != null) {
-        await Supabase.instance.client.from('perfiles').update({
-          'latitud': position.latitude,
-          'longitud': position.longitude,
-        }).eq('id', miId);
-      }
-    } catch (e) {
-      debugPrint("Error obteniendo GPS: $e");
-    }
   }
 
   void _escucharSolicitudesEntrantes() {
     final miId = Supabase.instance.client.auth.currentUser?.id;
     if (miId == null) return;
 
-    _solicitudesSubscription = Supabase.instance.client
-        .from('solicitudes')
-        .stream(primaryKey: ['id'])
-        .listen((solicitudes) async {
+    _solicitudesSubscription = Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']).listen((solicitudes) async {
       for (var s in solicitudes) {
         if (s['receptor_id'] == miId && s['estado'] == 'pendiente') {
           final solicitudId = s['id'].toString();
-          
           if (!_solicitudesNotificadas.contains(solicitudId)) {
             _solicitudesNotificadas.add(solicitudId);
-
-            final emisorData = await Supabase.instance.client
-                .from('perfiles')
-                .select()
-                .eq('id', s['emisor_id'])
-                .maybeSingle();
-
-            if (emisorData != null && mounted) {
-              _mostrarAlertaSolicitud(context, solicitudId, emisorData);
-            }
+            final emisorData = await Supabase.instance.client.from('perfiles').select().eq('id', s['emisor_id']).maybeSingle();
+            if (emisorData != null && mounted) _mostrarAlertaSolicitud(context, solicitudId, emisorData);
           }
         }
       }
@@ -472,7 +438,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
       final supabase = Supabase.instance.client;
       final usuarioActual = supabase.auth.currentUser;
       if (usuarioActual == null) return;
-      
       await supabase.from('solicitudes').insert({'emisor_id': usuarioActual.id, 'receptor_id': receptorId, 'estado': 'pendiente'});
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Solicitud enviada'), backgroundColor: Colors.green));
     } catch (e) {
@@ -528,23 +493,19 @@ class _PantallaRadarState extends State<PantallaRadar> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         
-        // Filtramos a los demás exploradores
         final perfiles = snapshot.data!.where((p) => p['id'] != miId).toList();
         
-        // ORDENAMIENTO POR CERCANÍA
-        if (_miLatitud != null && _miLongitud != null) {
+        if (widget.miLatitud != null && widget.miLongitud != null) {
           perfiles.sort((a, b) {
             final latA = (a['latitud'] as num?)?.toDouble();
             final lonA = (a['longitud'] as num?)?.toDouble();
             final latB = (b['latitud'] as num?)?.toDouble();
             final lonB = (b['longitud'] as num?)?.toDouble();
-
             if (latA == null || lonA == null) return 1;
             if (latB == null || lonB == null) return -1;
 
-            final distA = Geolocator.distanceBetween(_miLatitud!, _miLongitud!, latA, lonA);
-            final distB = Geolocator.distanceBetween(_miLatitud!, _miLongitud!, latB, lonB);
-
+            final distA = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latA, lonA);
+            final distB = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latB, lonB);
             return distA.compareTo(distB);
           });
         }
@@ -561,11 +522,10 @@ class _PantallaRadarState extends State<PantallaRadar> {
             final fotoUrl = perfil['foto_url']?.toString();
             final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
 
-            // Calcular y formatear distancia
             String distanciaTxt = '📍 Ubicación desconocida';
-            if (_miLatitud != null && _miLongitud != null && perfil['latitud'] != null && perfil['longitud'] != null) {
+            if (widget.miLatitud != null && widget.miLongitud != null && perfil['latitud'] != null && perfil['longitud'] != null) {
               final distanciaMetros = Geolocator.distanceBetween(
-                _miLatitud!, _miLongitud!, 
+                widget.miLatitud!, widget.miLongitud!, 
                 (perfil['latitud'] as num).toDouble(), (perfil['longitud'] as num).toDouble()
               );
               final distanciaKm = (distanciaMetros / 1000).toStringAsFixed(1);
@@ -622,9 +582,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     try {
       final miId = Supabase.instance.client.auth.currentUser?.id;
       if (miId == null) return;
-
       final perfil = await Supabase.instance.client.from('perfiles').select().eq('id', miId).single();
-
       if (mounted) {
         setState(() {
           _nombreController.text = perfil['nombre'] ?? '';
@@ -649,7 +607,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     final deseo = _deseoController.text.trim();
 
     if (nombre.isEmpty || edad.isEmpty || deseo.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor completa todos los campos')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Completa todos los campos')));
       return;
     }
     setState(() => _guardando = true);
@@ -662,7 +620,6 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
         'deseo_actual': deseo,
         'preferencia': _preferencia,
       }).eq('id', miId);
-
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil actualizado con éxito'), backgroundColor: Colors.green));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
@@ -697,12 +654,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
           const SizedBox(height: 30),
           _guardando
               ? const CircularProgressIndicator()
-              : ElevatedButton.icon(
-                  onPressed: _guardarCambios,
-                  icon: const Icon(Icons.save),
-                  label: const Text('Guardar Cambios'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
-                )
+              : ElevatedButton.icon(onPressed: _guardarCambios, icon: const Icon(Icons.save), label: const Text('Guardar Cambios'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)))
         ],
       ),
     );
@@ -728,13 +680,11 @@ class PantallaSolicitudes extends StatelessWidget {
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           final solicitudes = snapshot.data!;
-          
           return FutureBuilder<List<Map<String, dynamic>>>(
             future: Supabase.instance.client.from('perfiles').select(),
             builder: (context, perfilSnapshot) {
               if (!perfilSnapshot.hasData) return const Center(child: CircularProgressIndicator());
               final perfilesMap = {for (var p in perfilSnapshot.data!) p['id']: p};
-
               return ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -767,7 +717,7 @@ class PantallaSolicitudes extends StatelessWidget {
                       child: ListTile(
                         leading: CircleAvatar(backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null, child: fotoUrl == null ? const Icon(Icons.person) : null),
                         title: Text(otroPerfil['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
-                        subtitle: const Text('Toca para abrir el chat instantáneo'),
+                        subtitle: const Text('Toca para abrir el chat'),
                         trailing: const Icon(Icons.message, color: Colors.greenAccent),
                         onTap: () {
                           Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: otroPerfil['nombre'] ?? 'Explorador')));
@@ -788,9 +738,7 @@ class PantallaSolicitudes extends StatelessWidget {
 class PantallaChat extends StatefulWidget {
   final String receptorId;
   final String receptorNombre;
-
   const PantallaChat({super.key, required this.receptorId, required this.receptorNombre});
-
   @override
   State<PantallaChat> createState() => _PantallaChatState();
 }
@@ -802,11 +750,9 @@ class _PantallaChatState extends State<PantallaChat> {
   Future<void> enviarMensaje() async {
     final texto = _mensajeController.text.trim();
     if (texto.isEmpty) return;
-
     final miId = Supabase.instance.client.auth.currentUser?.id;
     if (miId == null) return;
     _mensajeController.clear();
-
     await Supabase.instance.client.from('mensajes').insert({'emisor_id': miId, 'receptor_id': widget.receptorId, 'contenido': texto});
   }
 
