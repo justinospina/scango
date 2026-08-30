@@ -383,7 +383,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
   StreamSubscription? _solicitudesSubscription;
   RealtimeChannel? _perfilesChannel;
   final Set<String> _solicitudesNotificadas = {};
-  final Set<String> _solicitudesAceptadasNotificadas = {}; // NUEVO: Para evitar duplicados de aceptación
+  final Set<String> _solicitudesAceptadasNotificadas = {}; 
   final Set<String> _exploradoresCercanosNotificados = {};
   final AudioPlayer _audioPlayer = AudioPlayer(); 
 
@@ -453,7 +453,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
       for (var s in solicitudes) {
         final solicitudId = s['id'].toString();
 
-        // 1. Solicitudes entrantes (Pendientes)
         if (s['receptor_id'] == miId && s['estado'] == 'pendiente') {
           if (!_solicitudesNotificadas.contains(solicitudId)) {
             _solicitudesNotificadas.add(solicitudId);
@@ -462,23 +461,13 @@ class _PantallaRadarState extends State<PantallaRadar> {
           }
         }
 
-        // 2. NUEVO: Mis solicitudes enviadas que fueron Aceptadas
+        // Detectar si el receptor acaba de ACEPTAR mi solicitud
         if (s['emisor_id'] == miId && s['estado'] == 'aceptada') {
           if (!_solicitudesAceptadasNotificadas.contains(solicitudId)) {
             _solicitudesAceptadasNotificadas.add(solicitudId);
-            
             final receptorData = await Supabase.instance.client.from('perfiles').select().eq('id', s['receptor_id']).maybeSingle();
-            
             if (receptorData != null && mounted) {
-              HapticFeedback.heavyImpact();
-              _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('🎉 ¡${receptorData['nombre']} aceptó tu solicitud! Ya pueden chatear.'),
-                  backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 4),
-                )
-              );
+              _mostrarAlertaSolicitudAceptada(context, receptorData);
             }
           }
         }
@@ -525,6 +514,66 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 await Supabase.instance.client.from('solicitudes').update({'estado': 'aceptada'}).eq('id', solicitudId);
               },
               child: const Text('Aceptar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // NUEVO: Alerta visual con la foto del usuario que aceptó tu invitación
+  void _mostrarAlertaSolicitudAceptada(BuildContext context, Map<String, dynamic> receptor) {
+    HapticFeedback.heavyImpact();
+    _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
+
+    final fotoUrl = receptor['foto_url']?.toString();
+    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text('¡Solicitud Aceptada! 🎉', style: TextStyle(color: Colors.greenAccent), textAlign: TextAlign.center),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 45,
+                backgroundColor: Colors.greenAccent,
+                backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
+                child: !tieneFoto ? const Icon(Icons.person, size: 45, color: Colors.black) : null,
+              ),
+              const SizedBox(height: 15),
+              Text(
+                '${receptor['nombre']} (${receptor['edad']} años)',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Ha aceptado tu solicitud. ¡Ya pueden chatear!',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => PantallaChat(
+                      receptorId: receptor['id'], 
+                      receptorNombre: receptor['nombre'] ?? 'Explorador'
+                    )
+                  )
+                );
+              },
+              icon: const Icon(Icons.chat),
+              label: const Text('Abrir Chat Ahora'),
             ),
           ],
         );
