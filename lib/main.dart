@@ -24,7 +24,77 @@ class ScanGoApp extends StatelessWidget {
       theme: ThemeData.dark(),
       home: Supabase.instance.client.auth.currentSession == null
           ? const PantallaLogin()
-          : const PantallaRadar(),
+          : const PantallaPrincipal(),
+    );
+  }
+}
+
+// NUEVA PANTALLA PRINCIPAL CON NAVEGACIÓN INFERIOR
+class PantallaPrincipal extends StatefulWidget {
+  const PantallaPrincipal({super.key});
+
+  @override
+  State<PantallaPrincipal> createState() => _PantallaPrincipalState();
+}
+
+class _PantallaPrincipalState extends State<PantallaPrincipal> {
+  int _indiceActual = 0;
+  
+  final List<Widget> _pantallas = [
+    const PantallaRadar(),
+    const PantallaMiPerfil(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_indiceActual == 0 ? 'Radar Global' : 'Mi Perfil'),
+        centerTitle: true,
+        leading: Icon(_indiceActual == 0 ? Icons.radar : Icons.account_circle, color: Colors.greenAccent),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PantallaSolicitudes()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await Supabase.instance.client.auth.signOut();
+              if (context.mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const PantallaLogin()),
+                  (route) => false,
+                );
+              }
+            },
+          )
+        ],
+      ),
+      // Usamos IndexedStack para mantener el estado (como el listener de solicitudes) al cambiar de pestaña
+      body: IndexedStack(
+        index: _indiceActual,
+        children: _pantallas,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _indiceActual,
+        selectedItemColor: Colors.greenAccent,
+        unselectedItemColor: Colors.grey,
+        backgroundColor: Colors.grey[900],
+        onTap: (index) {
+          setState(() {
+            _indiceActual = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.radar), label: 'Radar'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Mi Perfil'),
+        ],
+      ),
     );
   }
 }
@@ -55,7 +125,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
       );
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const PantallaRadar()),
+          MaterialPageRoute(builder: (_) => const PantallaPrincipal()),
         );
       }
     } catch (e) {
@@ -212,7 +282,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
 
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const PantallaRadar()),
+          MaterialPageRoute(builder: (_) => const PantallaPrincipal()),
           (route) => false,
         );
       }
@@ -315,6 +385,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   }
 }
 
+// PESTAÑA 1: RADAR
 class PantallaRadar extends StatefulWidget {
   const PantallaRadar({super.key});
 
@@ -514,93 +585,57 @@ class _PantallaRadarState extends State<PantallaRadar> {
     final streamPerfiles = Supabase.instance.client.from('perfiles').stream(primaryKey: ['id']);
     final miId = Supabase.instance.client.auth.currentUser?.id;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Radar Global'),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.account_circle, color: Colors.greenAccent),
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const PantallaMiPerfil()),
-            );
-          },
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.chat_bubble_outline),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PantallaSolicitudes()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await Supabase.instance.client.auth.signOut();
-              if (context.mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const PantallaLogin()),
-                  (route) => false,
-                );
-              }
-            },
-          )
-        ],
-      ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: streamPerfiles,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          
-          final perfiles = snapshot.data!.where((p) => p['id'] != miId).toList();
-          
-          if (perfiles.isEmpty) {
-            return const Center(
-              child: Text(
-                'No hay exploradores cerca de ti aún.',
-                style: TextStyle(fontSize: 18, color: Colors.grey),
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: streamPerfiles,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        
+        final perfiles = snapshot.data!.where((p) => p['id'] != miId).toList();
+        
+        if (perfiles.isEmpty) {
+          return const Center(
+            child: Text(
+              'No hay exploradores cerca de ti aún.',
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+          );
+        }
+        
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: perfiles.length,
+          itemBuilder: (context, index) {
+            final perfil = perfiles[index];
+            final fotoUrl = perfil['foto_url']?.toString();
+            final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+
+            return Card(
+              color: Colors.grey[900],
+              margin: const EdgeInsets.only(bottom: 15),
+              child: ListTile(
+                onTap: () => _mostrarPerfilDetallado(context, perfil),
+                leading: CircleAvatar(
+                  backgroundColor: Colors.greenAccent,
+                  backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
+                  child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null,
+                ),
+                title: Text('${perfil['nombre']} • ${perfil['edad']} años', 
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                subtitle: Text('Desea: ${perfil['deseo_actual']}'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.send, color: Colors.greenAccent),
+                  onPressed: () => enviarSolicitud(context, perfil['id']),
+                ),
               ),
             );
-          }
-          
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: perfiles.length,
-            itemBuilder: (context, index) {
-              final perfil = perfiles[index];
-              final fotoUrl = perfil['foto_url']?.toString();
-              final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
-
-              return Card(
-                color: Colors.grey[900],
-                margin: const EdgeInsets.only(bottom: 15),
-                child: ListTile(
-                  onTap: () => _mostrarPerfilDetallado(context, perfil),
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.greenAccent,
-                    backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
-                    child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null,
-                  ),
-                  title: Text('${perfil['nombre']} • ${perfil['edad']} años', 
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                  subtitle: Text('Desea: ${perfil['deseo_actual']}'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.greenAccent),
-                    onPressed: () => enviarSolicitud(context, perfil['id']),
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
+          },
+        );
+      },
     );
   }
 }
 
-// NUEVA PANTALLA: MI PERFIL (EDICIÓN Y VISUALIZACIÓN)
+// PESTAÑA 2: MI PERFIL (VISUALIZACIÓN Y EDICIÓN)
 class PantallaMiPerfil extends StatefulWidget {
   const PantallaMiPerfil({super.key});
 
@@ -634,14 +669,16 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
           .eq('id', miId)
           .single();
 
-      setState(() {
-        _nombreController.text = perfil['nombre'] ?? '';
-        _edadController.text = perfil['edad']?.toString() ?? '';
-        _deseoController.text = perfil['deseo_actual'] ?? '';
-        _preferencia = perfil['preferencia'] ?? 'AMBAS';
-        _fotoUrl = perfil['foto_url'];
-        _cargando = false;
-      });
+      if (mounted) {
+        setState(() {
+          _nombreController.text = perfil['nombre'] ?? '';
+          _edadController.text = perfil['edad']?.toString() ?? '';
+          _deseoController.text = perfil['deseo_actual'] ?? '';
+          _preferencia = perfil['preferencia'] ?? 'AMBAS';
+          _fotoUrl = perfil['foto_url'];
+          _cargando = false;
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al cargar perfil: $e')));
@@ -686,66 +723,60 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
   @override
   Widget build(BuildContext context) {
     if (_cargando) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Mi Perfil')),
-        body: const Center(child: CircularProgressIndicator()),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     final tieneFoto = _fotoUrl != null && _fotoUrl!.trim().isNotEmpty;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Mi Perfil')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            CircleAvatar(
-              radius: 60,
-              backgroundColor: Colors.greenAccent,
-              backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null,
-              child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.black) : null,
-            ),
-            const SizedBox(height: 25),
-            TextField(
-              controller: _nombreController,
-              decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 15),
-            TextField(
-              controller: _edadController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Edad', border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 15),
-            TextField(
-              controller: _deseoController,
-              decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 15),
-            DropdownButtonFormField<String>(
-              value: _preferencia,
-              decoration: const InputDecoration(labelText: 'Preferencia de búsqueda', border: OutlineInputBorder()),
-              items: ['MUJER', 'HOMBRE', 'AMBAS']
-                  .map((label) => DropdownMenuItem(value: label, child: Text(label)))
-                  .toList(),
-              onChanged: (value) => setState(() => _preferencia = value),
-            ),
-            const SizedBox(height: 30),
-            _guardando
-                ? const CircularProgressIndicator()
-                : ElevatedButton.icon(
-                    onPressed: _guardarCambios,
-                    icon: const Icon(Icons.save),
-                    label: const Text('Guardar Cambios'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.greenAccent,
-                      foregroundColor: Colors.black,
-                      minimumSize: const Size(double.infinity, 50)
-                    ),
-                  )
-          ],
-        ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          CircleAvatar(
+            radius: 60,
+            backgroundColor: Colors.greenAccent,
+            backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null,
+            child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.black) : null,
+          ),
+          const SizedBox(height: 25),
+          TextField(
+            controller: _nombreController,
+            decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 15),
+          TextField(
+            controller: _edadController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Edad', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 15),
+          TextField(
+            controller: _deseoController,
+            decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 15),
+          DropdownButtonFormField<String>(
+            value: _preferencia,
+            decoration: const InputDecoration(labelText: 'Preferencia de búsqueda', border: OutlineInputBorder()),
+            items: ['MUJER', 'HOMBRE', 'AMBAS']
+                .map((label) => DropdownMenuItem(value: label, child: Text(label)))
+                .toList(),
+            onChanged: (value) => setState(() => _preferencia = value),
+          ),
+          const SizedBox(height: 30),
+          _guardando
+              ? const CircularProgressIndicator()
+              : ElevatedButton.icon(
+                  onPressed: _guardarCambios,
+                  icon: const Icon(Icons.save),
+                  label: const Text('Guardar Cambios'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.greenAccent,
+                    foregroundColor: Colors.black,
+                    minimumSize: const Size(double.infinity, 50)
+                  ),
+                )
+        ],
       ),
     );
   }
