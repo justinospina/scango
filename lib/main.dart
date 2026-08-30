@@ -8,6 +8,9 @@ import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:audioplayers/audioplayers.dart';
 
+// Variable global de control para secuenciar los diálogos de inicio
+bool globalDeseoCompletado = false;
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(
@@ -49,13 +52,13 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   @override
   void initState() {
     super.initState();
+    globalDeseoCompletado = false; // Se reinicia al iniciar sesión
     _obtenerYGuardarGPS();
     
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       _actualizarUltimaConexion();
     });
 
-    // Se muestra primero el deseo de hoy al abrir o iniciar sesión
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _preguntarDeseoDeHoy();
     });
@@ -67,7 +70,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     super.dispose();
   }
 
-  // VENTANA PRIORITARIA: Deseo de hoy
   void _preguntarDeseoDeHoy() {
     if (_yaPreguntoDeseo) return;
     _yaPreguntoDeseo = true;
@@ -100,7 +102,10 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                globalDeseoCompletado = true;
+                Navigator.pop(context);
+              },
               child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
@@ -108,6 +113,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
               onPressed: () async {
                 final nuevoDeseo = deseoController.text.trim();
                 if (nuevoDeseo.isEmpty) {
+                  globalDeseoCompletado = true;
                   Navigator.pop(context);
                   return;
                 }
@@ -118,11 +124,13 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                     await Supabase.instance.client.from('perfiles').update({'deseo_actual': nuevoDeseo}).eq('id', miId);
                   }
                   if (mounted) {
+                    globalDeseoCompletado = true;
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✨ Deseo actualizado'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
                   }
                 } catch (e) {
                   if (mounted) {
+                    globalDeseoCompletado = true;
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al actualizar: $e'), backgroundColor: Colors.red));
                   }
@@ -536,6 +544,8 @@ class _PantallaRadarState extends State<PantallaRadar> {
   }
 
   void _mostrarNotificacionCercania(String nombre, double distMetros) {
+    if (!globalDeseoCompletado) return;
+
     final distKm = (distMetros / 1000).toStringAsFixed(1);
     HapticFeedback.lightImpact();
     _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
@@ -556,6 +566,11 @@ class _PantallaRadarState extends State<PantallaRadar> {
     if (miId == null) return;
 
     _solicitudesSubscription = Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']).listen((solicitudes) async {
+      while (!globalDeseoCompletado) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (!mounted) return;
+      }
+
       for (var s in solicitudes) {
         final solicitudId = s['id'].toString();
 
