@@ -43,11 +43,32 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   int _indiceActual = 0;
   double? _miLatitud;
   double? _miLongitud;
+  Timer? _heartbeatTimer;
   
   @override
   void initState() {
     super.initState();
     _obtenerYGuardarGPS();
+    
+    // Mantiene al usuario como "Activo" actualizando la base de datos cada 5 minutos
+    _heartbeatTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      _actualizarUltimaConexion();
+    });
+  }
+
+  @override
+  void dispose() {
+    _heartbeatTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _actualizarUltimaConexion() async {
+    final miId = Supabase.instance.client.auth.currentUser?.id;
+    if (miId != null) {
+      await Supabase.instance.client.from('perfiles').update({
+        'ultima_conexion': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', miId);
+    }
   }
 
   Future<void> _obtenerYGuardarGPS() async {
@@ -85,8 +106,9 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         await Supabase.instance.client.from('perfiles').update({
           'latitud': position.latitude,
           'longitud': position.longitude,
+          'ultima_conexion': DateTime.now().toUtc().toIso8601String(),
         }).eq('id', miId);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('📍 Ubicación actualizada'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('📍 Ubicación y estado actualizados'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error GPS: $e'), backgroundColor: Colors.red));
@@ -282,6 +304,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         'genero': _generoDetectado,
         'preferencia': _preferencia,
         'foto_url': fotoUrl,
+        'ultima_conexion': DateTime.now().toUtc().toIso8601String(),
       });
 
       if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PantallaPrincipal()), (route) => false);
@@ -371,7 +394,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
     _escucharExploradoresCercanos();
   }
 
-  // NUEVO: Escuchar conexiones de usuarios a menos de 5 km
   void _escucharExploradoresCercanos() {
     _perfilesChannel = Supabase.instance.client
         .channel('public:perfiles')
@@ -383,7 +405,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
             final nuevoPerfil = payload.newRecord;
             final miId = Supabase.instance.client.auth.currentUser?.id;
             
-            // Ignorar nuestra propia actualización de ubicación
             if (miId == null || nuevoPerfil['id'] == miId) return;
 
             if (widget.miLatitud != null && widget.miLongitud != null && 
@@ -395,11 +416,8 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 (nuevoPerfil['longitud'] as num).toDouble()
               );
 
-              // Si el usuario está a 5 km (5000 metros) o menos
               if (distMetros <= 5000) {
                 final perfilId = nuevoPerfil['id'].toString();
-                
-                // Evita notificar 10 veces si el usuario mueve un metro
                 if (!_exploradoresCercanosNotificados.contains(perfilId)) {
                   _exploradoresCercanosNotificados.add(perfilId);
                   _mostrarNotificacionCercania(nuevoPerfil['nombre'] ?? 'Alguien', distMetros);
@@ -413,7 +431,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
 
   void _mostrarNotificacionCercania(String nombre, double distMetros) {
     final distKm = (distMetros / 1000).toStringAsFixed(1);
-    
     HapticFeedback.lightImpact();
     _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
     
@@ -516,7 +533,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
     }
   }
 
-  void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil, String distanciaTxt) {
+  void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil, String distanciaTxt, bool esActivo) {
     final fotoUrl = perfil['foto_url']?.toString();
     final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
 
@@ -530,7 +547,19 @@ class _PantallaRadarState extends State<PantallaRadar> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
+              Stack(
+                children: [
+                  CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 20, height: 20,
+                      decoration: BoxDecoration(color: esActivo ? Colors.greenAccent : Colors.grey, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 3)),
+                    ),
+                  )
+                ],
+              ),
               const SizedBox(height: 16),
               Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
               const SizedBox(height: 4),
@@ -593,6 +622,13 @@ class _PantallaRadarState extends State<PantallaRadar> {
             final fotoUrl = perfil['foto_url']?.toString();
             final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
 
+            // Determinar si está activo (conexión en los últimos 15 min)
+            bool esActivo = false;
+            if (perfil['ultima_conexion'] != null) {
+              final ultimaConexion = DateTime.parse(perfil['ultima_conexion']);
+              esActivo = DateTime.now().toUtc().difference(ultimaConexion).inMinutes <= 15;
+            }
+
             String distanciaTxt = '📍 Ubicación desconocida';
             if (widget.miLatitud != null && widget.miLongitud != null && perfil['latitud'] != null && perfil['longitud'] != null) {
               final distanciaMetros = Geolocator.distanceBetween(
@@ -607,8 +643,20 @@ class _PantallaRadarState extends State<PantallaRadar> {
               color: Colors.grey[900],
               margin: const EdgeInsets.only(bottom: 15),
               child: ListTile(
-                onTap: () => _mostrarPerfilDetallado(context, perfil, distanciaTxt),
-                leading: CircleAvatar(backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null),
+                onTap: () => _mostrarPerfilDetallado(context, perfil, distanciaTxt, esActivo),
+                leading: Stack(
+                  children: [
+                    CircleAvatar(backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 14, height: 14,
+                        decoration: BoxDecoration(color: esActivo ? Colors.greenAccent : Colors.grey, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2)),
+                      ),
+                    )
+                  ],
+                ),
                 title: Text('${perfil['nombre']} • ${perfil['edad']} años', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
