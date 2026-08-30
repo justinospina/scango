@@ -44,6 +44,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   double? _miLatitud;
   double? _miLongitud;
   Timer? _heartbeatTimer;
+  bool _yaPreguntoDeseo = false;
   
   @override
   void initState() {
@@ -53,12 +54,86 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       _actualizarUltimaConexion();
     });
+
+    // Despliega la pregunta del deseo una vez construida la pantalla inicial
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _preguntarDeseoDeHoy();
+    });
   }
 
   @override
   void dispose() {
     _heartbeatTimer?.cancel();
     super.dispose();
+  }
+
+  // NUEVA FUNCIONALIDAD: Preguntar el deseo al entrar
+  void _preguntarDeseoDeHoy() {
+    if (_yaPreguntoDeseo) return;
+    _yaPreguntoDeseo = true;
+
+    final deseoController = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('🌟 ¿Cuál es tu deseo de hoy?', style: TextStyle(color: Colors.greenAccent)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Actualiza tu estado para que otros sepan qué buscas hacer el día de hoy.', style: TextStyle(color: Colors.grey, fontSize: 14)),
+              const SizedBox(height: 20),
+              TextField(
+                controller: deseoController,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: 'Ej. Tomar un café, conocer amigos...',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.greenAccent), borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
+              onPressed: () async {
+                final nuevoDeseo = deseoController.text.trim();
+                if (nuevoDeseo.isEmpty) {
+                  Navigator.pop(context);
+                  return;
+                }
+
+                try {
+                  final miId = Supabase.instance.client.auth.currentUser?.id;
+                  if (miId != null) {
+                    await Supabase.instance.client.from('perfiles').update({'deseo_actual': nuevoDeseo}).eq('id', miId);
+                  }
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✨ Deseo actualizado'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al actualizar: $e'), backgroundColor: Colors.red));
+                  }
+                }
+              },
+              child: const Text('Actualizar'),
+            ),
+          ],
+        );
+      }
+    );
   }
 
   Future<void> _actualizarUltimaConexion() async {
@@ -107,7 +182,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
           'longitud': position.longitude,
           'ultima_conexion': DateTime.now().toUtc().toIso8601String(),
         }).eq('id', miId);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('📍 Ubicación y estado actualizados'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error GPS: $e'), backgroundColor: Colors.red));
