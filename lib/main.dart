@@ -55,6 +55,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       _actualizarUltimaConexion();
     });
 
+    // Se muestra primero el deseo de hoy al abrir o iniciar sesión
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _preguntarDeseoDeHoy();
     });
@@ -66,6 +67,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     super.dispose();
   }
 
+  // VENTANA PRIORITARIA: Deseo de hoy
   void _preguntarDeseoDeHoy() {
     if (_yaPreguntoDeseo) return;
     _yaPreguntoDeseo = true;
@@ -181,7 +183,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   Widget build(BuildContext context) {
     final miId = Supabase.instance.client.auth.currentUser?.id;
 
-    // Listas de pantallas de la barra de navegación inferior
     final List<Widget> pantallas = [
       PantallaRadar(miLatitud: _miLatitud, miLongitud: _miLongitud),
       const PantallaSolicitudesYChats(),
@@ -229,13 +230,11 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                 }
 
                 if (snapshotMensajes.hasData && snapshotSolicitudes.hasData) {
-                  // Obtener IDs de amigos con chats activos
                   final chatsActivosIds = snapshotSolicitudes.data!
                       .where((s) => (s['emisor_id'] == miId || s['receptor_id'] == miId) && s['estado'] == 'aceptada')
                       .map((s) => s['emisor_id'] == miId ? s['receptor_id'] : s['emisor_id'])
                       .toSet();
 
-                  // Mensajes enviados por otros en chats activos que no sean nuestros
                   mensajesNoLeidos = snapshotMensajes.data!
                       .where((m) => m['receptor_id'] == miId && chatsActivosIds.contains(m['emisor_id']))
                       .length;
@@ -650,9 +649,16 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 child: !tieneFoto ? const Icon(Icons.person, size: 45, color: Colors.black) : null,
               ),
               const SizedBox(height: 15),
-              Text('${receptor['nombre']} (${receptor['edad']} años)', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text(
+                '${receptor['nombre']} (${receptor['edad']} años)',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
               const SizedBox(height: 8),
-              const Text('Ha aceptado tu solicitud. ¡Ya pueden chatear!', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+              const Text(
+                'Ha aceptado tu solicitud. ¡Ya pueden chatear!',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
             ],
           ),
           actionsAlignment: MainAxisAlignment.center,
@@ -661,7 +667,14 @@ class _PantallaRadarState extends State<PantallaRadar> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
               onPressed: () {
                 Navigator.pop(context);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: receptor['id'], receptorNombre: receptor['nombre'] ?? 'Explorador')));
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => PantallaChat(
+                      receptorId: receptor['id'], 
+                      receptorNombre: receptor['nombre'] ?? 'Explorador'
+                    )
+                  )
+                );
               },
               icon: const Icon(Icons.chat),
               label: const Text('Abrir Chat Ahora'),
@@ -718,7 +731,8 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 children: [
                   CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
                   Positioned(
-                    right: 0, bottom: 0,
+                    right: 0,
+                    bottom: 0,
                     child: Container(
                       width: 20, height: 20,
                       decoration: BoxDecoration(color: esActivo ? Colors.greenAccent : Colors.grey, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 3)),
