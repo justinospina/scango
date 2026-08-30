@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // <-- NUEVO: Para la vibración (HapticFeedback)
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
@@ -359,13 +359,73 @@ class PantallaRadar extends StatefulWidget {
 
 class _PantallaRadarState extends State<PantallaRadar> {
   StreamSubscription? _solicitudesSubscription;
+  RealtimeChannel? _perfilesChannel;
   final Set<String> _solicitudesNotificadas = {};
+  final Set<String> _exploradoresCercanosNotificados = {};
   final AudioPlayer _audioPlayer = AudioPlayer(); 
 
   @override
   void initState() {
     super.initState();
     _escucharSolicitudesEntrantes();
+    _escucharExploradoresCercanos();
+  }
+
+  // NUEVO: Escuchar conexiones de usuarios a menos de 5 km
+  void _escucharExploradoresCercanos() {
+    _perfilesChannel = Supabase.instance.client
+        .channel('public:perfiles')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'perfiles',
+          callback: (payload) {
+            final nuevoPerfil = payload.newRecord;
+            final miId = Supabase.instance.client.auth.currentUser?.id;
+            
+            // Ignorar nuestra propia actualización de ubicación
+            if (miId == null || nuevoPerfil['id'] == miId) return;
+
+            if (widget.miLatitud != null && widget.miLongitud != null && 
+                nuevoPerfil['latitud'] != null && nuevoPerfil['longitud'] != null) {
+              
+              final distMetros = Geolocator.distanceBetween(
+                widget.miLatitud!, widget.miLongitud!,
+                (nuevoPerfil['latitud'] as num).toDouble(),
+                (nuevoPerfil['longitud'] as num).toDouble()
+              );
+
+              // Si el usuario está a 5 km (5000 metros) o menos
+              if (distMetros <= 5000) {
+                final perfilId = nuevoPerfil['id'].toString();
+                
+                // Evita notificar 10 veces si el usuario mueve un metro
+                if (!_exploradoresCercanosNotificados.contains(perfilId)) {
+                  _exploradoresCercanosNotificados.add(perfilId);
+                  _mostrarNotificacionCercania(nuevoPerfil['nombre'] ?? 'Alguien', distMetros);
+                }
+              }
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  void _mostrarNotificacionCercania(String nombre, double distMetros) {
+    final distKm = (distMetros / 1000).toStringAsFixed(1);
+    
+    HapticFeedback.lightImpact();
+    _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('📍 ¡$nombre acaba de conectarse! Está a $distKm km de ti.'),
+          backgroundColor: Colors.blueAccent,
+          duration: const Duration(seconds: 4),
+        )
+      );
+    }
   }
 
   void _escucharSolicitudesEntrantes() {
@@ -387,7 +447,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
   }
 
   void _mostrarAlertaSolicitud(BuildContext context, String solicitudId, Map<String, dynamic> emisor) {
-    // VIBRACIÓN Y SONIDO AL RECIBIR
     HapticFeedback.heavyImpact();
     _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
 
@@ -436,6 +495,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
   @override
   void dispose() {
     _solicitudesSubscription?.cancel();
+    _perfilesChannel?.unsubscribe();
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -447,7 +507,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
       if (usuarioActual == null) return;
       await supabase.from('solicitudes').insert({'emisor_id': usuarioActual.id, 'receptor_id': receptorId, 'estado': 'pendiente'});
       
-      // VIBRACIÓN Y SONIDO AL ENVIAR
       HapticFeedback.mediumImpact();
       _audioPlayer.play(AssetSource('sonidos/envio.mp3')).catchError((_) {});
 
@@ -772,7 +831,6 @@ class _PantallaChatState extends State<PantallaChat> {
     
     await Supabase.instance.client.from('mensajes').insert({'emisor_id': miId, 'receptor_id': widget.receptorId, 'contenido': texto});
     
-    // VIBRACIÓN Y SONIDO AL ENVIAR MENSAJE
     HapticFeedback.lightImpact();
     _audioPlayer.play(AssetSource('sonidos/envio.mp3')).catchError((_) {});
 
