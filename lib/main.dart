@@ -48,7 +48,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     _obtenerYGuardarGPS();
   }
 
-  // Se ejecuta al iniciar sesión o abrir la app para asegurar que Supabase tenga la ubicación
   Future<void> _obtenerYGuardarGPS() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -582,16 +581,18 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     try {
       final miId = Supabase.instance.client.auth.currentUser?.id;
       if (miId == null) return;
-      final perfil = await Supabase.instance.client.from('perfiles').select().eq('id', miId).single();
+      final perfil = await Supabase.instance.client.from('perfiles').select().eq('id', miId).maybeSingle();
       if (mounted) {
-        setState(() {
-          _nombreController.text = perfil['nombre'] ?? '';
-          _edadController.text = perfil['edad']?.toString() ?? '';
-          _deseoController.text = perfil['deseo_actual'] ?? '';
-          _preferencia = perfil['preferencia'] ?? 'AMBAS';
-          _fotoUrl = perfil['foto_url'];
-          _cargando = false;
-        });
+        if (perfil != null) {
+          setState(() {
+            _nombreController.text = perfil['nombre'] ?? '';
+            _edadController.text = perfil['edad']?.toString() ?? '';
+            _deseoController.text = perfil['deseo_actual'] ?? '';
+            _preferencia = perfil['preferencia'] ?? 'AMBAS';
+            _fotoUrl = perfil['foto_url'];
+          });
+        }
+        setState(() => _cargando = false);
       }
     } catch (e) {
       if (mounted) {
@@ -614,15 +615,19 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 
     try {
       final miId = Supabase.instance.client.auth.currentUser!.id;
-      await Supabase.instance.client.from('perfiles').update({
+      
+      // Cambio CLAVE: Usamos .upsert e incluimos el 'id' obligatoriamente.
+      await Supabase.instance.client.from('perfiles').upsert({
+        'id': miId,
         'nombre': nombre,
         'edad': int.parse(edad),
         'deseo_actual': deseo,
         'preferencia': _preferencia,
-      }).eq('id', miId);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil actualizado con éxito'), backgroundColor: Colors.green));
+      });
+      
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil guardado con éxito'), backgroundColor: Colors.green));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _guardando = false);
     }
