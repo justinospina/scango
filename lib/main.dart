@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
+import 'package:geolocator/geolocator.dart'; // Nueva dependencia requerida
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +30,6 @@ class ScanGoApp extends StatelessWidget {
   }
 }
 
-// NUEVA PANTALLA PRINCIPAL CON NAVEGACIÓN INFERIOR
 class PantallaPrincipal extends StatefulWidget {
   const PantallaPrincipal({super.key});
 
@@ -75,7 +75,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
           )
         ],
       ),
-      // Usamos IndexedStack para mantener el estado (como el listener de solicitudes) al cambiar de pestaña
       body: IndexedStack(
         index: _indiceActual,
         children: _pantallas,
@@ -85,11 +84,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         selectedItemColor: Colors.greenAccent,
         unselectedItemColor: Colors.grey,
         backgroundColor: Colors.grey[900],
-        onTap: (index) {
-          setState(() {
-            _indiceActual = index;
-          });
-        },
+        onTap: (index) => setState(() => _indiceActual = index),
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.radar), label: 'Radar'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Mi Perfil'),
@@ -137,13 +132,6 @@ class _PantallaLoginState extends State<PantallaLogin> {
     } finally {
       if (mounted) setState(() => _procesando = false);
     }
-  }
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
   }
 
   @override
@@ -249,12 +237,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
 
     try {
       final supabase = Supabase.instance.client;
-      
-      final respuesta = await supabase.auth.signUp(
-        email: email,
-        password: password,
-      );
-
+      final respuesta = await supabase.auth.signUp(email: email, password: password);
       final usuarioNuevo = respuesta.user;
       if (usuarioNuevo == null) throw Exception('Error al generar la sesión en Supabase');
 
@@ -288,22 +271,11 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) setState(() => _procesando = false);
     }
-  }
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    _nombreController.dispose();
-    _edadController.dispose();
-    super.dispose();
   }
 
   @override
@@ -316,22 +288,11 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              TextField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder()),
-              ),
+              TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder())),
               const SizedBox(height: 15),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder()),
-              ),
+              TextField(controller: _passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder())),
               const SizedBox(height: 15),
-              TextField(
-                controller: _nombreController,
-                decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder()),
-              ),
+              TextField(controller: _nombreController, decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder())),
               const SizedBox(height: 25),
               if (_fotoPerfil == null)
                 ElevatedButton.icon(
@@ -343,25 +304,17 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
               else ...[
                 const Icon(Icons.check_circle, color: Colors.green, size: 50),
                 const SizedBox(height: 10),
-                if (_procesandoIA)
-                  const CircularProgressIndicator()
-                else
-                  Text('IA Detectó: $_generoDetectado', style: const TextStyle(fontSize: 20, color: Colors.greenAccent)),
+                if (_procesandoIA) const CircularProgressIndicator()
+                else Text('IA Detectó: $_generoDetectado', style: const TextStyle(fontSize: 20, color: Colors.greenAccent)),
               ],
               const SizedBox(height: 25),
               if (_generoDetectado != null && !_procesandoIA) ...[
-                TextField(
-                  controller: _edadController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Ingresa tu Edad', border: OutlineInputBorder()),
-                ),
+                TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Ingresa tu Edad', border: OutlineInputBorder())),
                 const SizedBox(height: 15),
                 DropdownButtonFormField<String>(
                   value: _preferencia,
                   decoration: const InputDecoration(labelText: 'Preferencia', border: OutlineInputBorder()),
-                  items: ['MUJER', 'HOMBRE', 'AMBAS']
-                      .map((label) => DropdownMenuItem(value: label, child: Text(label)))
-                      .toList(),
+                  items: ['MUJER', 'HOMBRE', 'AMBAS'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
                   onChanged: (value) => setState(() => _preferencia = value!),
                 ),
                 const SizedBox(height: 30),
@@ -369,11 +322,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                     ? const CircularProgressIndicator()
                     : ElevatedButton(
                         onPressed: registrarYGuardar,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.greenAccent, 
-                          foregroundColor: Colors.black,
-                          minimumSize: const Size(double.infinity, 50)
-                        ),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
                         child: const Text('Completar Registro'),
                       )
               ]
@@ -385,7 +334,6 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   }
 }
 
-// PESTAÑA 1: RADAR
 class PantallaRadar extends StatefulWidget {
   const PantallaRadar({super.key});
 
@@ -396,11 +344,48 @@ class PantallaRadar extends StatefulWidget {
 class _PantallaRadarState extends State<PantallaRadar> {
   StreamSubscription? _solicitudesSubscription;
   final Set<String> _solicitudesNotificadas = {};
+  double? _miLatitud;
+  double? _miLongitud;
 
   @override
   void initState() {
     super.initState();
+    _actualizarUbicacionGPS();
     _escucharSolicitudesEntrantes();
+  }
+
+  // Obtenemos GPS y lo guardamos en Supabase para que otros puedan calcular la distancia
+  Future<void> _actualizarUbicacionGPS() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+      if (permission == LocationPermission.deniedForever) return;
+
+      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      
+      if (mounted) {
+        setState(() {
+          _miLatitud = position.latitude;
+          _miLongitud = position.longitude;
+        });
+      }
+
+      final miId = Supabase.instance.client.auth.currentUser?.id;
+      if (miId != null) {
+        await Supabase.instance.client.from('perfiles').update({
+          'latitud': position.latitude,
+          'longitud': position.longitude,
+        }).eq('id', miId);
+      }
+    } catch (e) {
+      debugPrint("Error obteniendo GPS: $e");
+    }
   }
 
   void _escucharSolicitudesEntrantes() {
@@ -447,17 +432,9 @@ class _PantallaRadarState extends State<PantallaRadar> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircleAvatar(
-                radius: 45,
-                backgroundColor: Colors.greenAccent,
-                backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
-                child: !tieneFoto ? const Icon(Icons.person, size: 45, color: Colors.black) : null,
-              ),
+              CircleAvatar(radius: 45, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 45, color: Colors.black) : null),
               const SizedBox(height: 15),
-              Text(
-                '${emisor['nombre']} (${emisor['edad']} años)',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
+              Text('${emisor['nombre']} (${emisor['edad']} años)', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
               const SizedBox(height: 8),
               const Text('Quiere conectar contigo.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
             ],
@@ -466,10 +443,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
             TextButton(
               onPressed: () async {
                 Navigator.pop(context);
-                await Supabase.instance.client
-                    .from('solicitudes')
-                    .update({'estado': 'rechazada'})
-                    .eq('id', solicitudId);
+                await Supabase.instance.client.from('solicitudes').update({'estado': 'rechazada'}).eq('id', solicitudId);
               },
               child: const Text('Rechazar', style: TextStyle(color: Colors.red)),
             ),
@@ -477,10 +451,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
               onPressed: () async {
                 Navigator.pop(context);
-                await Supabase.instance.client
-                    .from('solicitudes')
-                    .update({'estado': 'aceptada'})
-                    .eq('id', solicitudId);
+                await Supabase.instance.client.from('solicitudes').update({'estado': 'aceptada'}).eq('id', solicitudId);
               },
               child: const Text('Aceptar'),
             ),
@@ -502,63 +473,34 @@ class _PantallaRadarState extends State<PantallaRadar> {
       final usuarioActual = supabase.auth.currentUser;
       if (usuarioActual == null) return;
       
-      await supabase.from('solicitudes').insert({
-        'emisor_id': usuarioActual.id,
-        'receptor_id': receptorId,
-        'estado': 'pendiente'
-      });
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Solicitud enviada con éxito'), backgroundColor: Colors.green),
-        );
-      }
+      await supabase.from('solicitudes').insert({'emisor_id': usuarioActual.id, 'receptor_id': receptorId, 'estado': 'pendiente'});
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Solicitud enviada'), backgroundColor: Colors.green));
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al enviar solicitud: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
     }
   }
 
-  void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil) {
+  void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil, String distanciaTxt) {
     final fotoUrl = perfil['foto_url']?.toString();
     final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.grey[900],
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircleAvatar(
-                radius: 50,
-                backgroundColor: Colors.greenAccent,
-                backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
-                child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null,
-              ),
+              CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
               const SizedBox(height: 16),
-              Text(
-                '${perfil['nombre']}, ${perfil['edad']} años',
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
+              Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+              const SizedBox(height: 4),
+              Text(distanciaTxt, style: const TextStyle(fontSize: 14, color: Colors.orangeAccent)),
               const SizedBox(height: 8),
-              Text(
-                'Género: ${perfil['genero'] ?? 'No especificado'}',
-                style: const TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Desea: ${perfil['deseo_actual']}',
-                style: const TextStyle(fontSize: 16, color: Colors.greenAccent),
-              ),
+              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent)),
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 onPressed: () {
@@ -566,12 +508,8 @@ class _PantallaRadarState extends State<PantallaRadar> {
                   enviarSolicitud(context, perfil['id']);
                 },
                 icon: const Icon(Icons.send),
-                label: const Text('Enviar Solicitud de Conexión'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.greenAccent,
-                  foregroundColor: Colors.black,
-                  minimumSize: const Size(double.infinity, 50),
-                ),
+                label: const Text('Enviar Solicitud'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
               ),
             ],
           ),
@@ -590,15 +528,29 @@ class _PantallaRadarState extends State<PantallaRadar> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         
+        // Filtramos a los demás exploradores
         final perfiles = snapshot.data!.where((p) => p['id'] != miId).toList();
         
+        // ORDENAMIENTO POR CERCANÍA
+        if (_miLatitud != null && _miLongitud != null) {
+          perfiles.sort((a, b) {
+            final latA = (a['latitud'] as num?)?.toDouble();
+            final lonA = (a['longitud'] as num?)?.toDouble();
+            final latB = (b['latitud'] as num?)?.toDouble();
+            final lonB = (b['longitud'] as num?)?.toDouble();
+
+            if (latA == null || lonA == null) return 1;
+            if (latB == null || lonB == null) return -1;
+
+            final distA = Geolocator.distanceBetween(_miLatitud!, _miLongitud!, latA, lonA);
+            final distB = Geolocator.distanceBetween(_miLatitud!, _miLongitud!, latB, lonB);
+
+            return distA.compareTo(distB);
+          });
+        }
+
         if (perfiles.isEmpty) {
-          return const Center(
-            child: Text(
-              'No hay exploradores cerca de ti aún.',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-          );
+          return const Center(child: Text('No hay exploradores cerca de ti aún.', style: TextStyle(fontSize: 18, color: Colors.grey)));
         }
         
         return ListView.builder(
@@ -609,23 +561,32 @@ class _PantallaRadarState extends State<PantallaRadar> {
             final fotoUrl = perfil['foto_url']?.toString();
             final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
 
+            // Calcular y formatear distancia
+            String distanciaTxt = '📍 Ubicación desconocida';
+            if (_miLatitud != null && _miLongitud != null && perfil['latitud'] != null && perfil['longitud'] != null) {
+              final distanciaMetros = Geolocator.distanceBetween(
+                _miLatitud!, _miLongitud!, 
+                (perfil['latitud'] as num).toDouble(), (perfil['longitud'] as num).toDouble()
+              );
+              final distanciaKm = (distanciaMetros / 1000).toStringAsFixed(1);
+              distanciaTxt = '📍 A $distanciaKm km de distancia';
+            }
+
             return Card(
               color: Colors.grey[900],
               margin: const EdgeInsets.only(bottom: 15),
               child: ListTile(
-                onTap: () => _mostrarPerfilDetallado(context, perfil),
-                leading: CircleAvatar(
-                  backgroundColor: Colors.greenAccent,
-                  backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
-                  child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null,
+                onTap: () => _mostrarPerfilDetallado(context, perfil, distanciaTxt),
+                leading: CircleAvatar(backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null),
+                title: Text('${perfil['nombre']} • ${perfil['edad']} años', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Desea: ${perfil['deseo_actual']}'),
+                    Text(distanciaTxt, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+                  ],
                 ),
-                title: Text('${perfil['nombre']} • ${perfil['edad']} años', 
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                subtitle: Text('Desea: ${perfil['deseo_actual']}'),
-                trailing: IconButton(
-                  icon: const Icon(Icons.send, color: Colors.greenAccent),
-                  onPressed: () => enviarSolicitud(context, perfil['id']),
-                ),
+                trailing: IconButton(icon: const Icon(Icons.send, color: Colors.greenAccent), onPressed: () => enviarSolicitud(context, perfil['id'])),
               ),
             );
           },
@@ -635,7 +596,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
   }
 }
 
-// PESTAÑA 2: MI PERFIL (VISUALIZACIÓN Y EDICIÓN)
 class PantallaMiPerfil extends StatefulWidget {
   const PantallaMiPerfil({super.key});
 
@@ -663,11 +623,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       final miId = Supabase.instance.client.auth.currentUser?.id;
       if (miId == null) return;
 
-      final perfil = await Supabase.instance.client
-          .from('perfiles')
-          .select()
-          .eq('id', miId)
-          .single();
+      final perfil = await Supabase.instance.client.from('perfiles').select().eq('id', miId).single();
 
       if (mounted) {
         setState(() {
@@ -696,7 +652,6 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor completa todos los campos')));
       return;
     }
-
     setState(() => _guardando = true);
 
     try {
@@ -708,13 +663,9 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
         'preferencia': _preferencia,
       }).eq('id', miId);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil actualizado con éxito'), backgroundColor: Colors.green));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil actualizado con éxito'), backgroundColor: Colors.green));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _guardando = false);
     }
@@ -722,45 +673,25 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 
   @override
   Widget build(BuildContext context) {
-    if (_cargando) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
+    if (_cargando) return const Center(child: CircularProgressIndicator());
     final tieneFoto = _fotoUrl != null && _fotoUrl!.trim().isNotEmpty;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          CircleAvatar(
-            radius: 60,
-            backgroundColor: Colors.greenAccent,
-            backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null,
-            child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.black) : null,
-          ),
+          CircleAvatar(radius: 60, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null, child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.black) : null),
           const SizedBox(height: 25),
-          TextField(
-            controller: _nombreController,
-            decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder()),
-          ),
+          TextField(controller: _nombreController, decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder())),
           const SizedBox(height: 15),
-          TextField(
-            controller: _edadController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Edad', border: OutlineInputBorder()),
-          ),
+          TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Edad', border: OutlineInputBorder())),
           const SizedBox(height: 15),
-          TextField(
-            controller: _deseoController,
-            decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder()),
-          ),
+          TextField(controller: _deseoController, decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder())),
           const SizedBox(height: 15),
           DropdownButtonFormField<String>(
             value: _preferencia,
             decoration: const InputDecoration(labelText: 'Preferencia de búsqueda', border: OutlineInputBorder()),
-            items: ['MUJER', 'HOMBRE', 'AMBAS']
-                .map((label) => DropdownMenuItem(value: label, child: Text(label)))
-                .toList(),
+            items: ['MUJER', 'HOMBRE', 'AMBAS'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
             onChanged: (value) => setState(() => _preferencia = value),
           ),
           const SizedBox(height: 30),
@@ -770,11 +701,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
                   onPressed: _guardarCambios,
                   icon: const Icon(Icons.save),
                   label: const Text('Guardar Cambios'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.greenAccent,
-                    foregroundColor: Colors.black,
-                    minimumSize: const Size(double.infinity, 50)
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
                 )
         ],
       ),
@@ -786,18 +713,13 @@ class PantallaSolicitudes extends StatelessWidget {
   const PantallaSolicitudes({super.key});
 
   Future<void> actualizarEstado(String solicitudId, String nuevoEstado) async {
-    await Supabase.instance.client
-        .from('solicitudes')
-        .update({'estado': nuevoEstado})
-        .eq('id', solicitudId);
+    await Supabase.instance.client.from('solicitudes').update({'estado': nuevoEstado}).eq('id', solicitudId);
   }
 
   @override
   Widget build(BuildContext context) {
     final miId = Supabase.instance.client.auth.currentUser?.id;
-    final streamSolicitudes = Supabase.instance.client
-        .from('solicitudes')
-        .stream(primaryKey: ['id']);
+    final streamSolicitudes = Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Solicitudes y Chats')),
@@ -805,7 +727,6 @@ class PantallaSolicitudes extends StatelessWidget {
         stream: streamSolicitudes,
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-
           final solicitudes = snapshot.data!;
           
           return FutureBuilder<List<Map<String, dynamic>>>(
@@ -817,8 +738,7 @@ class PantallaSolicitudes extends StatelessWidget {
               return ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  const Text('Solicitudes Recibidas (Pendientes)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
-                  const SizedBox(height: 10),
+                  const Text('Solicitudes Pendientes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
                   ...solicitudes.where((s) => s['receptor_id'] == miId && s['estado'] == 'pendiente').map((s) {
                     final emisor = perfilesMap[s['emisor_id']] ?? {};
                     return Card(
@@ -829,14 +749,8 @@ class PantallaSolicitudes extends StatelessWidget {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            IconButton(
-                              icon: const Icon(Icons.check, color: Colors.green),
-                              onPressed: () => actualizarEstado(s['id'], 'aceptada'),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.close, color: Colors.red),
-                              onPressed: () => actualizarEstado(s['id'], 'rechazada'),
-                            ),
+                            IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () => actualizarEstado(s['id'], 'aceptada')),
+                            IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => actualizarEstado(s['id'], 'rechazada')),
                           ],
                         ),
                       ),
@@ -844,32 +758,19 @@ class PantallaSolicitudes extends StatelessWidget {
                   }),
                   const SizedBox(height: 30),
                   const Text('Chats Activos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
-                  const SizedBox(height: 10),
                   ...solicitudes.where((s) => (s['emisor_id'] == miId || s['receptor_id'] == miId) && s['estado'] == 'aceptada').map((s) {
                     final otroId = s['emisor_id'] == miId ? s['receptor_id'] : s['emisor_id'];
                     final otroPerfil = perfilesMap[otroId] ?? {};
                     final fotoUrl = otroPerfil['foto_url']?.toString();
-                    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
-
                     return Card(
                       color: Colors.grey[900],
                       child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
-                          child: !tieneFoto ? const Icon(Icons.person) : null,
-                        ),
+                        leading: CircleAvatar(backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null, child: fotoUrl == null ? const Icon(Icons.person) : null),
                         title: Text(otroPerfil['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
                         subtitle: const Text('Toca para abrir el chat instantáneo'),
                         trailing: const Icon(Icons.message, color: Colors.greenAccent),
                         onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => PantallaChat(
-                                receptorId: otroId,
-                                receptorNombre: otroPerfil['nombre'] ?? 'Explorador',
-                              ),
-                            ),
-                          );
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: otroPerfil['nombre'] ?? 'Explorador')));
                         },
                       ),
                     );
@@ -904,31 +805,15 @@ class _PantallaChatState extends State<PantallaChat> {
 
     final miId = Supabase.instance.client.auth.currentUser?.id;
     if (miId == null) return;
-
     _mensajeController.clear();
 
-    try {
-      await Supabase.instance.client.from('mensajes').insert({
-        'emisor_id': miId,
-        'receptor_id': widget.receptorId,
-        'contenido': texto,
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al enviar mensaje: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
+    await Supabase.instance.client.from('mensajes').insert({'emisor_id': miId, 'receptor_id': widget.receptorId, 'contenido': texto});
   }
 
   @override
   Widget build(BuildContext context) {
     final miId = Supabase.instance.client.auth.currentUser?.id;
-    final streamMensajes = Supabase.instance.client
-        .from('mensajes')
-        .stream(primaryKey: ['id'])
-        .order('created_at', ascending: true);
+    final streamMensajes = Supabase.instance.client.from('mensajes').stream(primaryKey: ['id']).order('created_at', ascending: true);
 
     return Scaffold(
       appBar: AppBar(title: Text('Chat con ${widget.receptorNombre}')),
@@ -939,10 +824,7 @@ class _PantallaChatState extends State<PantallaChat> {
               stream: streamMensajes,
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-
-                final mensajes = snapshot.data!.where((m) =>
-                    (m['emisor_id'] == miId && m['receptor_id'] == widget.receptorId) ||
-                    (m['emisor_id'] == widget.receptorId && m['receptor_id'] == miId)).toList();
+                final mensajes = snapshot.data!.where((m) => (m['emisor_id'] == miId && m['receptor_id'] == widget.receptorId) || (m['emisor_id'] == widget.receptorId && m['receptor_id'] == miId)).toList();
 
                 return ListView.builder(
                   controller: _scrollController,
@@ -957,14 +839,8 @@ class _PantallaChatState extends State<PantallaChat> {
                       child: Container(
                         margin: const EdgeInsets.symmetric(vertical: 4),
                         padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: esMio ? Colors.green[800] : Colors.grey[800],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          mensaje['contenido'] ?? '',
-                          style: const TextStyle(color: Colors.white),
-                        ),
+                        decoration: BoxDecoration(color: esMio ? Colors.green[800] : Colors.grey[800], borderRadius: BorderRadius.circular(12)),
+                        child: Text(mensaje['contenido'] ?? '', style: const TextStyle(color: Colors.white)),
                       ),
                     );
                   },
@@ -976,20 +852,8 @@ class _PantallaChatState extends State<PantallaChat> {
             padding: const EdgeInsets.all(8.0),
             child: Row(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _mensajeController,
-                    decoration: const InputDecoration(
-                      hintText: 'Escribe un mensaje...',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.send, color: Colors.greenAccent),
-                  onPressed: enviarMensaje,
-                ),
+                Expanded(child: TextField(controller: _mensajeController, decoration: const InputDecoration(hintText: 'Mensaje...', border: OutlineInputBorder()))),
+                IconButton(icon: const Icon(Icons.send, color: Colors.greenAccent), onPressed: enviarMensaje),
               ],
             ),
           ),
