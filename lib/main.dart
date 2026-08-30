@@ -50,7 +50,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     super.initState();
     _obtenerYGuardarGPS();
     
-    // Mantiene al usuario como "Activo" actualizando la base de datos cada 5 minutos
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       _actualizarUltimaConexion();
     });
@@ -384,6 +383,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
   StreamSubscription? _solicitudesSubscription;
   RealtimeChannel? _perfilesChannel;
   final Set<String> _solicitudesNotificadas = {};
+  final Set<String> _solicitudesAceptadasNotificadas = {}; // NUEVO: Para evitar duplicados de aceptación
   final Set<String> _exploradoresCercanosNotificados = {};
   final AudioPlayer _audioPlayer = AudioPlayer(); 
 
@@ -451,12 +451,35 @@ class _PantallaRadarState extends State<PantallaRadar> {
 
     _solicitudesSubscription = Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']).listen((solicitudes) async {
       for (var s in solicitudes) {
+        final solicitudId = s['id'].toString();
+
+        // 1. Solicitudes entrantes (Pendientes)
         if (s['receptor_id'] == miId && s['estado'] == 'pendiente') {
-          final solicitudId = s['id'].toString();
           if (!_solicitudesNotificadas.contains(solicitudId)) {
             _solicitudesNotificadas.add(solicitudId);
             final emisorData = await Supabase.instance.client.from('perfiles').select().eq('id', s['emisor_id']).maybeSingle();
             if (emisorData != null && mounted) _mostrarAlertaSolicitud(context, solicitudId, emisorData);
+          }
+        }
+
+        // 2. NUEVO: Mis solicitudes enviadas que fueron Aceptadas
+        if (s['emisor_id'] == miId && s['estado'] == 'aceptada') {
+          if (!_solicitudesAceptadasNotificadas.contains(solicitudId)) {
+            _solicitudesAceptadasNotificadas.add(solicitudId);
+            
+            final receptorData = await Supabase.instance.client.from('perfiles').select().eq('id', s['receptor_id']).maybeSingle();
+            
+            if (receptorData != null && mounted) {
+              HapticFeedback.heavyImpact();
+              _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('🎉 ¡${receptorData['nombre']} aceptó tu solicitud! Ya pueden chatear.'),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 4),
+                )
+              );
+            }
           }
         }
       }
@@ -622,7 +645,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
             final fotoUrl = perfil['foto_url']?.toString();
             final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
 
-            // Determinar si está activo (conexión en los últimos 15 min)
             bool esActivo = false;
             if (perfil['ultima_conexion'] != null) {
               final ultimaConexion = DateTime.parse(perfil['ultima_conexion']);
