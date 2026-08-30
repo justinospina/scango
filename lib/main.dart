@@ -1,11 +1,12 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // <-- NUEVO: Para la vibración (HapticFeedback)
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
-import 'package:audioplayers/audioplayers.dart'; // <-- Importación de Audio
+import 'package:audioplayers/audioplayers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,7 +67,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         }
       }
       if (permission == LocationPermission.deniedForever) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Permisos bloqueados en el navegador/app'), backgroundColor: Colors.red));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Permisos de ubicación bloqueados en el navegador/app'), backgroundColor: Colors.red));
         return;
       }
 
@@ -148,6 +149,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
 
 class PantallaLogin extends StatefulWidget {
   const PantallaLogin({super.key});
+
   @override
   State<PantallaLogin> createState() => _PantallaLoginState();
 }
@@ -160,12 +162,15 @@ class _PantallaLoginState extends State<PantallaLogin> {
   Future<void> iniciarSesion() async {
     final emailLimpio = _emailController.text.trim();
     final passwordLimpio = _passwordController.text.trim();
+
     if (emailLimpio.isEmpty || passwordLimpio.isEmpty) return;
     setState(() => _procesando = true);
 
     try {
       await Supabase.instance.client.auth.signInWithPassword(email: emailLimpio, password: passwordLimpio);
-      if (mounted) Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const PantallaPrincipal()));
+      if (mounted) {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const PantallaPrincipal()));
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credenciales incorrectas'), backgroundColor: Colors.red));
     } finally {
@@ -217,6 +222,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
 
 class PantallaRegistro extends StatefulWidget {
   const PantallaRegistro({super.key});
+
   @override
   State<PantallaRegistro> createState() => _PantallaRegistroState();
 }
@@ -248,9 +254,10 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     final edad = _edadController.text.trim();
 
     if (email.isEmpty || password.isEmpty || nombre.isEmpty || edad.isEmpty || _generoDetectado == null || _fotoPerfil == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Completa todos los campos y toma tu foto'), backgroundColor: Colors.orange));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor completa todos los campos y toma tu foto'), backgroundColor: Colors.orange));
       return;
     }
+
     setState(() => _procesando = true);
 
     try {
@@ -353,7 +360,7 @@ class PantallaRadar extends StatefulWidget {
 class _PantallaRadarState extends State<PantallaRadar> {
   StreamSubscription? _solicitudesSubscription;
   final Set<String> _solicitudesNotificadas = {};
-  final AudioPlayer _audioPlayer = AudioPlayer(); // <-- Inicializar AudioPlayer
+  final AudioPlayer _audioPlayer = AudioPlayer(); 
 
   @override
   void initState() {
@@ -380,8 +387,9 @@ class _PantallaRadarState extends State<PantallaRadar> {
   }
 
   void _mostrarAlertaSolicitud(BuildContext context, String solicitudId, Map<String, dynamic> emisor) {
-    // REPRODUCIR SONIDO AL RECIBIR SOLICITUD
-    _audioPlayer.play(AssetSource('sonidos/notificacion.mp3'));
+    // VIBRACIÓN Y SONIDO AL RECIBIR
+    HapticFeedback.heavyImpact();
+    _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
 
     final fotoUrl = emisor['foto_url']?.toString();
     final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
@@ -437,11 +445,12 @@ class _PantallaRadarState extends State<PantallaRadar> {
       final supabase = Supabase.instance.client;
       final usuarioActual = supabase.auth.currentUser;
       if (usuarioActual == null) return;
-      
       await supabase.from('solicitudes').insert({'emisor_id': usuarioActual.id, 'receptor_id': receptorId, 'estado': 'pendiente'});
       
-      // REPRODUCIR SONIDO Y NOTIFICACIÓN AL ENVIAR
-      _audioPlayer.play(AssetSource('sonidos/envio.mp3'));
+      // VIBRACIÓN Y SONIDO AL ENVIAR
+      HapticFeedback.mediumImpact();
+      _audioPlayer.play(AssetSource('sonidos/envio.mp3')).catchError((_) {});
+
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Solicitud enviada exitosamente'), backgroundColor: Colors.green));
     } catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
@@ -513,7 +522,9 @@ class _PantallaRadarState extends State<PantallaRadar> {
           });
         }
 
-        if (perfiles.isEmpty) return const Center(child: Text('No hay exploradores cerca de ti aún.', style: TextStyle(fontSize: 18, color: Colors.grey)));
+        if (perfiles.isEmpty) {
+          return const Center(child: Text('No hay exploradores cerca de ti aún.', style: TextStyle(fontSize: 18, color: Colors.grey)));
+        }
         
         return ListView.builder(
           padding: const EdgeInsets.all(16),
@@ -525,7 +536,10 @@ class _PantallaRadarState extends State<PantallaRadar> {
 
             String distanciaTxt = '📍 Ubicación desconocida';
             if (widget.miLatitud != null && widget.miLongitud != null && perfil['latitud'] != null && perfil['longitud'] != null) {
-              final distanciaMetros = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, (perfil['latitud'] as num).toDouble(), (perfil['longitud'] as num).toDouble());
+              final distanciaMetros = Geolocator.distanceBetween(
+                widget.miLatitud!, widget.miLongitud!, 
+                (perfil['latitud'] as num).toDouble(), (perfil['longitud'] as num).toDouble()
+              );
               final distanciaKm = (distanciaMetros / 1000).toStringAsFixed(1);
               distanciaTxt = '📍 A $distanciaKm km de distancia';
             }
@@ -556,6 +570,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
 
 class PantallaMiPerfil extends StatefulWidget {
   const PantallaMiPerfil({super.key});
+
   @override
   State<PantallaMiPerfil> createState() => _PantallaMiPerfilState();
 }
@@ -605,13 +620,20 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     final edad = _edadController.text.trim();
     final deseo = _deseoController.text.trim();
 
-    if (nombre.isEmpty || edad.isEmpty || deseo.isEmpty) return;
+    if (nombre.isEmpty || edad.isEmpty || deseo.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Completa todos los campos')));
+      return;
+    }
     setState(() => _guardando = true);
 
     try {
       final miId = Supabase.instance.client.auth.currentUser!.id;
       await Supabase.instance.client.from('perfiles').upsert({
-        'id': miId, 'nombre': nombre, 'edad': int.parse(edad), 'deseo_actual': deseo, 'preferencia': _preferencia,
+        'id': miId,
+        'nombre': nombre,
+        'edad': int.parse(edad),
+        'deseo_actual': deseo,
+        'preferencia': _preferencia,
       });
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil guardado con éxito'), backgroundColor: Colors.green));
     } catch (e) {
@@ -739,7 +761,7 @@ class PantallaChat extends StatefulWidget {
 class _PantallaChatState extends State<PantallaChat> {
   final _mensajeController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final AudioPlayer _audioPlayer = AudioPlayer(); // <-- Instancia de audio para chat
+  final AudioPlayer _audioPlayer = AudioPlayer(); 
 
   Future<void> enviarMensaje() async {
     final texto = _mensajeController.text.trim();
@@ -750,8 +772,10 @@ class _PantallaChatState extends State<PantallaChat> {
     
     await Supabase.instance.client.from('mensajes').insert({'emisor_id': miId, 'receptor_id': widget.receptorId, 'contenido': texto});
     
-    // REPRODUCIR SONIDO Y NOTIFICACIÓN DE ENVÍO
-    _audioPlayer.play(AssetSource('sonidos/envio.mp3'));
+    // VIBRACIÓN Y SONIDO AL ENVIAR MENSAJE
+    HapticFeedback.lightImpact();
+    _audioPlayer.play(AssetSource('sonidos/envio.mp3')).catchError((_) {});
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('✅ Mensaje enviado'), backgroundColor: Colors.black87, duration: Duration(milliseconds: 800))
