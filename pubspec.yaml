@@ -30,13 +30,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  supabase_flutter: ^2.4.0
+  supabase_flutter: ^2.5.0
+  image_picker: ^1.1.2
   geolocator: ^11.0.0
+  audioplayers: ^6.0.0 # <-- NUEVA DEPENDENCIA
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
-  image_picker: ^1.2.3
+flutter:
+  uses-material-design: true
+  assets:               # <-- HABILITAR ASSETS
+    - assets/sonidos/   # <-- RUTA DE TUS SONIDOS
 
 dev_dependencies:
   flutter_test:
