@@ -347,7 +347,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
           if (!_solicitudesNotificadas.contains(solicitudId)) {
             _solicitudesNotificadas.add(solicitudId);
 
-            // Consultar datos del emisor para mostrar su foto y nombre en la ventana emergente
             final emisorData = await Supabase.instance.client
                 .from('perfiles')
                 .select()
@@ -373,7 +372,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: Colors.grey[900],
-          title: const Text('¡Nueva solicitud de conexión!', style: TextStyle(color: Colors.greenAccent)),
+          title: const Text('¡Nueva solicitud!', style: TextStyle(color: Colors.greenAccent)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -389,7 +388,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
               ),
               const SizedBox(height: 8),
-              const Text('Quiere conectar contigo en el radar.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+              const Text('Quiere conectar contigo.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
             ],
           ),
           actions: [
@@ -519,7 +518,14 @@ class _PantallaRadarState extends State<PantallaRadar> {
       appBar: AppBar(
         title: const Text('Radar Global'),
         centerTitle: true,
-        leading: const Icon(Icons.radar, color: Colors.greenAccent),
+        leading: IconButton(
+          icon: const Icon(Icons.account_circle, color: Colors.greenAccent),
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PantallaMiPerfil()),
+            );
+          },
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline),
@@ -589,6 +595,157 @@ class _PantallaRadarState extends State<PantallaRadar> {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+// NUEVA PANTALLA: MI PERFIL (EDICIÓN Y VISUALIZACIÓN)
+class PantallaMiPerfil extends StatefulWidget {
+  const PantallaMiPerfil({super.key});
+
+  @override
+  State<PantallaMiPerfil> createState() => _PantallaMiPerfilState();
+}
+
+class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
+  final _nombreController = TextEditingController();
+  final _edadController = TextEditingController();
+  final _deseoController = TextEditingController();
+  String? _preferencia;
+  String? _fotoUrl;
+  bool _cargando = true;
+  bool _guardando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarMiPerfil();
+  }
+
+  Future<void> _cargarMiPerfil() async {
+    try {
+      final miId = Supabase.instance.client.auth.currentUser?.id;
+      if (miId == null) return;
+
+      final perfil = await Supabase.instance.client
+          .from('perfiles')
+          .select()
+          .eq('id', miId)
+          .single();
+
+      setState(() {
+        _nombreController.text = perfil['nombre'] ?? '';
+        _edadController.text = perfil['edad']?.toString() ?? '';
+        _deseoController.text = perfil['deseo_actual'] ?? '';
+        _preferencia = perfil['preferencia'] ?? 'AMBAS';
+        _fotoUrl = perfil['foto_url'];
+        _cargando = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al cargar perfil: $e')));
+        setState(() => _cargando = false);
+      }
+    }
+  }
+
+  Future<void> _guardarCambios() async {
+    final nombre = _nombreController.text.trim();
+    final edad = _edadController.text.trim();
+    final deseo = _deseoController.text.trim();
+
+    if (nombre.isEmpty || edad.isEmpty || deseo.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor completa todos los campos')));
+      return;
+    }
+
+    setState(() => _guardando = true);
+
+    try {
+      final miId = Supabase.instance.client.auth.currentUser!.id;
+      await Supabase.instance.client.from('perfiles').update({
+        'nombre': nombre,
+        'edad': int.parse(edad),
+        'deseo_actual': deseo,
+        'preferencia': _preferencia,
+      }).eq('id', miId);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil actualizado con éxito'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_cargando) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Mi Perfil')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final tieneFoto = _fotoUrl != null && _fotoUrl!.trim().isNotEmpty;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Mi Perfil')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            CircleAvatar(
+              radius: 60,
+              backgroundColor: Colors.greenAccent,
+              backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null,
+              child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.black) : null,
+            ),
+            const SizedBox(height: 25),
+            TextField(
+              controller: _nombreController,
+              decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: _edadController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Edad', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: _deseoController,
+              decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 15),
+            DropdownButtonFormField<String>(
+              value: _preferencia,
+              decoration: const InputDecoration(labelText: 'Preferencia de búsqueda', border: OutlineInputBorder()),
+              items: ['MUJER', 'HOMBRE', 'AMBAS']
+                  .map((label) => DropdownMenuItem(value: label, child: Text(label)))
+                  .toList(),
+              onChanged: (value) => setState(() => _preferencia = value),
+            ),
+            const SizedBox(height: 30),
+            _guardando
+                ? const CircularProgressIndicator()
+                : ElevatedButton.icon(
+                    onPressed: _guardarCambios,
+                    icon: const Icon(Icons.save),
+                    label: const Text('Guardar Cambios'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.greenAccent,
+                      foregroundColor: Colors.black,
+                      minimumSize: const Size(double.infinity, 50)
+                    ),
+                  )
+          ],
+        ),
       ),
     );
   }
