@@ -461,7 +461,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
           }
         }
 
-        // Detectar si el receptor acaba de ACEPTAR mi solicitud
         if (s['emisor_id'] == miId && s['estado'] == 'aceptada') {
           if (!_solicitudesAceptadasNotificadas.contains(solicitudId)) {
             _solicitudesAceptadasNotificadas.add(solicitudId);
@@ -521,7 +520,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
     );
   }
 
-  // NUEVO: Alerta visual con la foto del usuario que aceptó tu invitación
   void _mostrarAlertaSolicitudAceptada(BuildContext context, Map<String, dynamic> receptor) {
     HapticFeedback.heavyImpact();
     _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
@@ -594,6 +592,10 @@ class _PantallaRadarState extends State<PantallaRadar> {
       final supabase = Supabase.instance.client;
       final usuarioActual = supabase.auth.currentUser;
       if (usuarioActual == null) return;
+      
+      final existentes = await supabase.from('solicitudes').select().or('and(emisor_id.eq.${usuarioActual.id},receptor_id.eq.$receptorId),and(emisor_id.eq.$receptorId,receptor_id.eq.${usuarioActual.id})');
+      if (existentes.isNotEmpty && existentes.first['estado'] != 'rechazada') return;
+
       await supabase.from('solicitudes').insert({'emisor_id': usuarioActual.id, 'receptor_id': receptorId, 'estado': 'pendiente'});
       
       HapticFeedback.mediumImpact();
@@ -605,7 +607,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
     }
   }
 
-  void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil, String distanciaTxt, bool esActivo) {
+  void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil, String distanciaTxt, bool esActivo, String estadoRelacion) {
     final fotoUrl = perfil['foto_url']?.toString();
     final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
 
@@ -639,15 +641,29 @@ class _PantallaRadarState extends State<PantallaRadar> {
               const SizedBox(height: 8),
               Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent)),
               const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  enviarSolicitud(context, perfil['id']);
-                },
-                icon: const Icon(Icons.send),
-                label: const Text('Enviar Solicitud'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
-              ),
+              
+              if (estadoRelacion == 'aceptada') 
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: perfil['id'], receptorNombre: perfil['nombre'])));
+                  },
+                  icon: const Icon(Icons.chat),
+                  label: const Text('Abrir Chat'),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
+                )
+              else if (estadoRelacion == 'ninguna')
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    enviarSolicitud(context, perfil['id']);
+                  },
+                  icon: const Icon(Icons.send),
+                  label: const Text('Enviar Solicitud'),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
+                )
+              else 
+                const Text('Solicitud pendiente de respuesta', style: TextStyle(color: Colors.orange, fontSize: 16, fontWeight: FontWeight.bold))
             ],
           ),
         );
@@ -657,87 +673,117 @@ class _PantallaRadarState extends State<PantallaRadar> {
 
   @override
   Widget build(BuildContext context) {
-    final streamPerfiles = Supabase.instance.client.from('perfiles').stream(primaryKey: ['id']);
     final miId = Supabase.instance.client.auth.currentUser?.id;
+    final streamPerfiles = Supabase.instance.client.from('perfiles').stream(primaryKey: ['id']);
+    final streamSolicitudes = Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']);
 
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: streamPerfiles,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+      builder: (context, snapshotPerfiles) {
+        if (!snapshotPerfiles.hasData) return const Center(child: CircularProgressIndicator());
         
-        final perfiles = snapshot.data!.where((p) => p['id'] != miId).toList();
-        
-        if (widget.miLatitud != null && widget.miLongitud != null) {
-          perfiles.sort((a, b) {
-            final latA = (a['latitud'] as num?)?.toDouble();
-            final lonA = (a['longitud'] as num?)?.toDouble();
-            final latB = (b['latitud'] as num?)?.toDouble();
-            final lonB = (b['longitud'] as num?)?.toDouble();
-            if (latA == null || lonA == null) return 1;
-            if (latB == null || lonB == null) return -1;
+        return StreamBuilder<List<Map<String, dynamic>>>(
+          stream: streamSolicitudes,
+          builder: (context, snapshotSolicitudes) {
+            if (!snapshotSolicitudes.hasData) return const Center(child: CircularProgressIndicator());
 
-            final distA = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latA, lonA);
-            final distB = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latB, lonB);
-            return distA.compareTo(distB);
-          });
-        }
+            final perfiles = snapshotPerfiles.data!.where((p) => p['id'] != miId).toList();
+            final misSolicitudes = snapshotSolicitudes.data!.where((s) => s['emisor_id'] == miId || s['receptor_id'] == miId).toList();
+            
+            if (widget.miLatitud != null && widget.miLongitud != null) {
+              perfiles.sort((a, b) {
+                final latA = (a['latitud'] as num?)?.toDouble();
+                final lonA = (a['longitud'] as num?)?.toDouble();
+                final latB = (b['latitud'] as num?)?.toDouble();
+                final lonB = (b['longitud'] as num?)?.toDouble();
+                if (latA == null || lonA == null) return 1;
+                if (latB == null || lonB == null) return -1;
 
-        if (perfiles.isEmpty) {
-          return const Center(child: Text('No hay exploradores cerca de ti aún.', style: TextStyle(fontSize: 18, color: Colors.grey)));
-        }
-        
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: perfiles.length,
-          itemBuilder: (context, index) {
-            final perfil = perfiles[index];
-            final fotoUrl = perfil['foto_url']?.toString();
-            final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
-
-            bool esActivo = false;
-            if (perfil['ultima_conexion'] != null) {
-              final ultimaConexion = DateTime.parse(perfil['ultima_conexion']);
-              esActivo = DateTime.now().toUtc().difference(ultimaConexion).inMinutes <= 15;
+                final distA = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latA, lonA);
+                final distB = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latB, lonB);
+                return distA.compareTo(distB);
+              });
             }
 
-            String distanciaTxt = '📍 Ubicación desconocida';
-            if (widget.miLatitud != null && widget.miLongitud != null && perfil['latitud'] != null && perfil['longitud'] != null) {
-              final distanciaMetros = Geolocator.distanceBetween(
-                widget.miLatitud!, widget.miLongitud!, 
-                (perfil['latitud'] as num).toDouble(), (perfil['longitud'] as num).toDouble()
-              );
-              final distanciaKm = (distanciaMetros / 1000).toStringAsFixed(1);
-              distanciaTxt = '📍 A $distanciaKm km de distancia';
+            if (perfiles.isEmpty) {
+              return const Center(child: Text('No hay exploradores cerca de ti aún.', style: TextStyle(fontSize: 18, color: Colors.grey)));
             }
+            
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: perfiles.length,
+              itemBuilder: (context, index) {
+                final perfil = perfiles[index];
+                final otroId = perfil['id'];
+                final fotoUrl = perfil['foto_url']?.toString();
+                final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
 
-            return Card(
-              color: Colors.grey[900],
-              margin: const EdgeInsets.only(bottom: 15),
-              child: ListTile(
-                onTap: () => _mostrarPerfilDetallado(context, perfil, distanciaTxt, esActivo),
-                leading: Stack(
-                  children: [
-                    CircleAvatar(backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null),
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        width: 14, height: 14,
-                        decoration: BoxDecoration(color: esActivo ? Colors.greenAccent : Colors.grey, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2)),
-                      ),
-                    )
-                  ],
-                ),
-                title: Text('${perfil['nombre']} • ${perfil['edad']} años', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Desea: ${perfil['deseo_actual']}'),
-                    Text(distanciaTxt, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12)),
-                  ],
-                ),
-                trailing: IconButton(icon: const Icon(Icons.send, color: Colors.greenAccent), onPressed: () => enviarSolicitud(context, perfil['id'])),
-              ),
+                bool esActivo = false;
+                if (perfil['ultima_conexion'] != null) {
+                  final ultimaConexion = DateTime.parse(perfil['ultima_conexion']);
+                  esActivo = DateTime.now().toUtc().difference(ultimaConexion).inMinutes <= 15;
+                }
+
+                String distanciaTxt = '📍 Ubicación desconocida';
+                if (widget.miLatitud != null && widget.miLongitud != null && perfil['latitud'] != null && perfil['longitud'] != null) {
+                  final distMetros = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, (perfil['latitud'] as num).toDouble(), (perfil['longitud'] as num).toDouble());
+                  distanciaTxt = '📍 A ${(distMetros / 1000).toStringAsFixed(1)} km';
+                }
+
+                String estadoRelacion = 'ninguna';
+                Map<String, dynamic>? relacionExistente;
+                
+                try {
+                  relacionExistente = misSolicitudes.firstWhere((s) => (s['emisor_id'] == miId && s['receptor_id'] == otroId) || (s['emisor_id'] == otroId && s['receptor_id'] == miId));
+                  estadoRelacion = relacionExistente['estado'];
+                } catch (e) {
+                  // No hay relación
+                }
+
+                Widget botonAccion;
+                if (estadoRelacion == 'aceptada') {
+                  botonAccion = IconButton(
+                    icon: const Icon(Icons.chat, color: Colors.blueAccent),
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: perfil['nombre']))),
+                  );
+                } else if (estadoRelacion == 'pendiente') {
+                  botonAccion = const Icon(Icons.access_time, color: Colors.orange);
+                } else {
+                  botonAccion = IconButton(
+                    icon: const Icon(Icons.send, color: Colors.greenAccent),
+                    onPressed: () => enviarSolicitud(context, otroId),
+                  );
+                }
+
+                return Card(
+                  color: Colors.grey[900],
+                  margin: const EdgeInsets.only(bottom: 15),
+                  child: ListTile(
+                    onTap: () => _mostrarPerfilDetallado(context, perfil, distanciaTxt, esActivo, estadoRelacion),
+                    leading: Stack(
+                      children: [
+                        CircleAvatar(backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null),
+                        Positioned(
+                          right: 0, bottom: 0,
+                          child: Container(
+                            width: 14, height: 14,
+                            decoration: BoxDecoration(color: esActivo ? Colors.greenAccent : Colors.grey, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2)),
+                          ),
+                        )
+                      ],
+                    ),
+                    title: Text('${perfil['nombre']} • ${perfil['edad']} años', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Desea: ${perfil['deseo_actual']}'),
+                        Text(distanciaTxt, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+                      ],
+                    ),
+                    trailing: botonAccion,
+                  ),
+                );
+              },
             );
           },
         );
