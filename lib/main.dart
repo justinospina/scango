@@ -55,7 +55,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       _actualizarUltimaConexion();
     });
 
-    // Despliega la pregunta del deseo una vez construida la pantalla inicial
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _preguntarDeseoDeHoy();
     });
@@ -67,7 +66,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     super.dispose();
   }
 
-  // NUEVA FUNCIONALIDAD: Preguntar el deseo al entrar
   void _preguntarDeseoDeHoy() {
     if (_yaPreguntoDeseo) return;
     _yaPreguntoDeseo = true;
@@ -148,23 +146,14 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   Future<void> _obtenerYGuardarGPS() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Activa el GPS de tu dispositivo'), backgroundColor: Colors.orange));
-        return;
-      }
+      if (!serviceEnabled) return;
 
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Permiso de ubicación denegado'), backgroundColor: Colors.red));
-          return;
-        }
+        if (permission == LocationPermission.denied) return;
       }
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Permisos de ubicación bloqueados en el navegador/app'), backgroundColor: Colors.red));
-        return;
-      }
+      if (permission == LocationPermission.deniedForever) return;
 
       final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       
@@ -184,31 +173,27 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         }).eq('id', miId);
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error GPS: $e'), backgroundColor: Colors.red));
+      debugPrint("Error GPS: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final miId = Supabase.instance.client.auth.currentUser?.id;
+
+    // Listas de pantallas de la barra de navegación inferior
     final List<Widget> pantallas = [
       PantallaRadar(miLatitud: _miLatitud, miLongitud: _miLongitud),
+      const PantallaSolicitudesYChats(),
       const PantallaMiPerfil(),
     ];
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_indiceActual == 0 ? 'Radar Global' : 'Mi Perfil'),
+        title: Text(_indiceActual == 0 ? 'Radar Global' : (_indiceActual == 1 ? 'Solicitudes y Chats' : 'Mi Perfil')),
         centerTitle: true,
-        leading: Icon(_indiceActual == 0 ? Icons.radar : Icons.account_circle, color: Colors.greenAccent),
+        leading: Icon(_indiceActual == 0 ? Icons.radar : (_indiceActual == 1 ? Icons.chat_bubble : Icons.account_circle), color: Colors.greenAccent),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.chat_bubble_outline),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PantallaSolicitudes()),
-              );
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -227,16 +212,65 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         index: _indiceActual,
         children: pantallas,
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _indiceActual,
-        selectedItemColor: Colors.greenAccent,
-        unselectedItemColor: Colors.grey,
-        backgroundColor: Colors.grey[900],
-        onTap: (index) => setState(() => _indiceActual = index),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.radar), label: 'Radar'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Mi Perfil'),
-        ],
+      bottomNavigationBar: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']),
+        builder: (context, snapshotSolicitudes) {
+          return StreamBuilder<List<Map<String, dynamic>>>(
+            stream: Supabase.instance.client.from('mensajes').stream(primaryKey: ['id']),
+            builder: (context, snapshotMensajes) {
+              int solicitudesPendientes = 0;
+              int mensajesNoLeidos = 0;
+
+              if (miId != null) {
+                if (snapshotSolicitudes.hasData) {
+                  solicitudesPendientes = snapshotSolicitudes.data!
+                      .where((s) => s['receptor_id'] == miId && s['estado'] == 'pendiente')
+                      .length;
+                }
+
+                if (snapshotMensajes.hasData && snapshotSolicitudes.hasData) {
+                  // Obtener IDs de amigos con chats activos
+                  final chatsActivosIds = snapshotSolicitudes.data!
+                      .where((s) => (s['emisor_id'] == miId || s['receptor_id'] == miId) && s['estado'] == 'aceptada')
+                      .map((s) => s['emisor_id'] == miId ? s['receptor_id'] : s['emisor_id'])
+                      .toSet();
+
+                  // Mensajes enviados por otros en chats activos que no sean nuestros
+                  mensajesNoLeidos = snapshotMensajes.data!
+                      .where((m) => m['receptor_id'] == miId && chatsActivosIds.contains(m['emisor_id']))
+                      .length;
+                }
+              }
+
+              return BottomNavigationBar(
+                currentIndex: _indiceActual,
+                selectedItemColor: Colors.greenAccent,
+                unselectedItemColor: Colors.grey,
+                backgroundColor: Colors.grey[900],
+                onTap: (index) => setState(() => _indiceActual = index),
+                items: [
+                  const BottomNavigationBarItem(icon: Icon(Icons.radar), label: 'Radar'),
+                  BottomNavigationBarItem(
+                    icon: Badge(
+                      isLabelVisible: solicitudesPendientes > 0,
+                      label: Text('$solicitudesPendientes'),
+                      child: const Icon(Icons.notifications),
+                    ),
+                    label: 'Solicitudes',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Badge(
+                      isLabelVisible: mensajesNoLeidos > 0,
+                      label: Text('$mensajesNoLeidos'),
+                      child: const Icon(Icons.person),
+                    ),
+                    label: 'Mi Perfil',
+                  ),
+                ],
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -257,7 +291,6 @@ class _PantallaLoginState extends State<PantallaLogin> {
   Future<void> iniciarSesion() async {
     final emailLimpio = _emailController.text.trim();
     final passwordLimpio = _passwordController.text.trim();
-
     if (emailLimpio.isEmpty || passwordLimpio.isEmpty) return;
     setState(() => _procesando = true);
 
@@ -349,7 +382,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     final edad = _edadController.text.trim();
 
     if (email.isEmpty || password.isEmpty || nombre.isEmpty || edad.isEmpty || _generoDetectado == null || _fotoPerfil == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor completa todos los campos y toma tu foto'), backgroundColor: Colors.orange));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Completa todos los campos y toma tu foto'), backgroundColor: Colors.orange));
       return;
     }
 
@@ -617,16 +650,9 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 child: !tieneFoto ? const Icon(Icons.person, size: 45, color: Colors.black) : null,
               ),
               const SizedBox(height: 15),
-              Text(
-                '${receptor['nombre']} (${receptor['edad']} años)',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
+              Text('${receptor['nombre']} (${receptor['edad']} años)', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
               const SizedBox(height: 8),
-              const Text(
-                'Ha aceptado tu solicitud. ¡Ya pueden chatear!',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
+              const Text('Ha aceptado tu solicitud. ¡Ya pueden chatear!', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
             ],
           ),
           actionsAlignment: MainAxisAlignment.center,
@@ -635,14 +661,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
               onPressed: () {
                 Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => PantallaChat(
-                      receptorId: receptor['id'], 
-                      receptorNombre: receptor['nombre'] ?? 'Explorador'
-                    )
-                  )
-                );
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: receptor['id'], receptorNombre: receptor['nombre'] ?? 'Explorador')));
               },
               icon: const Icon(Icons.chat),
               label: const Text('Abrir Chat Ahora'),
@@ -699,8 +718,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 children: [
                   CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
                   Positioned(
-                    right: 0,
-                    bottom: 0,
+                    right: 0, bottom: 0,
                     child: Container(
                       width: 20, height: 20,
                       decoration: BoxDecoration(color: esActivo ? Colors.greenAccent : Colors.grey, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 3)),
@@ -811,7 +829,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                   relacionExistente = misSolicitudes.firstWhere((s) => (s['emisor_id'] == miId && s['receptor_id'] == otroId) || (s['emisor_id'] == otroId && s['receptor_id'] == miId));
                   estadoRelacion = relacionExistente['estado'];
                 } catch (e) {
-                  // No hay relación
+                  // Sin relación
                 }
 
                 Widget botonAccion;
@@ -974,8 +992,8 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
   }
 }
 
-class PantallaSolicitudes extends StatelessWidget {
-  const PantallaSolicitudes({super.key});
+class PantallaSolicitudesYChats extends StatelessWidget {
+  const PantallaSolicitudesYChats({super.key});
 
   Future<void> actualizarEstado(String solicitudId, String nuevoEstado) async {
     await Supabase.instance.client.from('solicitudes').update({'estado': nuevoEstado}).eq('id', solicitudId);
@@ -987,7 +1005,6 @@ class PantallaSolicitudes extends StatelessWidget {
     final streamSolicitudes = Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Solicitudes y Chats')),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: streamSolicitudes,
         builder: (context, snapshot) {
