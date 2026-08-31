@@ -8,9 +8,6 @@ import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:audioplayers/audioplayers.dart';
 
-// Variable global de control para secuenciar los diálogos de inicio
-bool globalDeseoCompletado = false;
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(
@@ -39,20 +36,22 @@ class PantallaPrincipal extends StatefulWidget {
   const PantallaPrincipal({super.key});
 
   @override
-  State<PantallaPrincipal> createState() => _PantallaPrincipalState();
+  State<PantallaPrincipal> createState() => PantallaPrincipalState();
 }
 
-class _PantallaPrincipalState extends State<PantallaPrincipal> {
+class PantallaPrincipalState extends State<PantallaPrincipal> {
   int _indiceActual = 0;
   double? _miLatitud;
   double? _miLongitud;
   Timer? _heartbeatTimer;
   bool _yaPreguntoDeseo = false;
   
+  static bool deseoCompletado = false;
+
   @override
   void initState() {
     super.initState();
-    globalDeseoCompletado = false; // Se reinicia al iniciar sesión
+    deseoCompletado = false;
     _obtenerYGuardarGPS();
     
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 5), (_) {
@@ -93,7 +92,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                 controller: deseoController,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(
-                  hintText: 'Ej. Tomar un café, conocer amigos...',
+                  hintText: 'Ej. Tomar un café...',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.greenAccent), borderRadius: BorderRadius.circular(12)),
                 ),
@@ -103,7 +102,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
           actions: [
             TextButton(
               onPressed: () {
-                globalDeseoCompletado = true;
+                deseoCompletado = true;
                 Navigator.pop(context);
               },
               child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
@@ -113,7 +112,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
               onPressed: () async {
                 final nuevoDeseo = deseoController.text.trim();
                 if (nuevoDeseo.isEmpty) {
-                  globalDeseoCompletado = true;
+                  deseoCompletado = true;
                   Navigator.pop(context);
                   return;
                 }
@@ -124,15 +123,14 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                     await Supabase.instance.client.from('perfiles').update({'deseo_actual': nuevoDeseo}).eq('id', miId);
                   }
                   if (mounted) {
-                    globalDeseoCompletado = true;
+                    deseoCompletado = true;
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✨ Deseo actualizado'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
                   }
                 } catch (e) {
                   if (mounted) {
-                    globalDeseoCompletado = true;
+                    deseoCompletado = true;
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al actualizar: $e'), backgroundColor: Colors.red));
                   }
                 }
               },
@@ -157,14 +155,12 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
-
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) return;
       }
       if (permission == LocationPermission.deniedForever) return;
-
       final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       
       if (mounted) {
@@ -173,7 +169,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
           _miLongitud = position.longitude;
         });
       }
-
       final miId = Supabase.instance.client.auth.currentUser?.id;
       if (miId != null) {
         await Supabase.instance.client.from('perfiles').update({
@@ -208,10 +203,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
             onPressed: () async {
               await Supabase.instance.client.auth.signOut();
               if (context.mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const PantallaLogin()),
-                  (route) => false,
-                );
+                Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PantallaLogin()), (route) => false);
               }
             },
           )
@@ -227,14 +219,18 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
           return StreamBuilder<List<Map<String, dynamic>>>(
             stream: Supabase.instance.client.from('mensajes').stream(primaryKey: ['id']),
             builder: (context, snapshotMensajes) {
-              int solicitudesPendientes = 0;
-              int mensajesNoLeidos = 0;
+              int notificacionesTotales = 0;
 
               if (miId != null) {
+                int solicitudesPendientes = 0;
+                int mensajesNoLeidos = 0;
+
                 if (snapshotSolicitudes.hasData) {
-                  solicitudesPendientes = snapshotSolicitudes.data!
-                      .where((s) => s['receptor_id'] == miId && s['estado'] == 'pendiente')
-                      .length;
+                  final pendientes = snapshotSolicitudes.data!.where((s) => s['receptor_id'] == miId && s['estado'] == 'pendiente');
+                  // Agrupar para no contar repetidas del mismo usuario
+                  final pendientesUnicas = <String>{};
+                  for (var p in pendientes) pendientesUnicas.add(p['emisor_id']);
+                  solicitudesPendientes = pendientesUnicas.length;
                 }
 
                 if (snapshotMensajes.hasData && snapshotSolicitudes.hasData) {
@@ -247,6 +243,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                       .where((m) => m['receptor_id'] == miId && chatsActivosIds.contains(m['emisor_id']))
                       .length;
                 }
+                notificacionesTotales = solicitudesPendientes + mensajesNoLeidos;
               }
 
               return BottomNavigationBar(
@@ -259,20 +256,14 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                   const BottomNavigationBarItem(icon: Icon(Icons.radar), label: 'Radar'),
                   BottomNavigationBarItem(
                     icon: Badge(
-                      isLabelVisible: solicitudesPendientes > 0,
-                      label: Text('$solicitudesPendientes'),
-                      child: const Icon(Icons.notifications),
+                      backgroundColor: Colors.red,
+                      isLabelVisible: notificacionesTotales > 0,
+                      label: Text('$notificacionesTotales', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      child: const Icon(Icons.chat_bubble),
                     ),
                     label: 'Solicitudes',
                   ),
-                  BottomNavigationBarItem(
-                    icon: Badge(
-                      isLabelVisible: mensajesNoLeidos > 0,
-                      label: Text('$mensajesNoLeidos'),
-                      child: const Icon(Icons.person),
-                    ),
-                    label: 'Mi Perfil',
-                  ),
+                  const BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Mi Perfil'),
                 ],
               );
             },
@@ -303,9 +294,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
 
     try {
       await Supabase.instance.client.auth.signInWithPassword(email: emailLimpio, password: passwordLimpio);
-      if (mounted) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const PantallaPrincipal()));
-      }
+      if (mounted) Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const PantallaPrincipal()));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credenciales incorrectas'), backgroundColor: Colors.red));
     } finally {
@@ -333,18 +322,9 @@ class _PantallaLoginState extends State<PantallaLogin> {
                   ? const CircularProgressIndicator()
                   : Column(
                       children: [
-                        ElevatedButton.icon(
-                          onPressed: iniciarSesion,
-                          icon: const Icon(Icons.login),
-                          label: const Text('Iniciar Sesión'),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
-                        ),
+                        ElevatedButton.icon(onPressed: iniciarSesion, icon: const Icon(Icons.login), label: const Text('Iniciar Sesión'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50))),
                         const SizedBox(height: 10),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PantallaRegistro())),
-                          style: TextButton.styleFrom(foregroundColor: Colors.greenAccent),
-                          child: const Text('Crear cuenta nueva'),
-                        )
+                        TextButton(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PantallaRegistro())), style: TextButton.styleFrom(foregroundColor: Colors.greenAccent), child: const Text('Crear cuenta nueva'))
                       ],
                     )
             ],
@@ -388,11 +368,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     final nombre = _nombreController.text.trim();
     final edad = _edadController.text.trim();
 
-    if (email.isEmpty || password.isEmpty || nombre.isEmpty || edad.isEmpty || _generoDetectado == null || _fotoPerfil == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Completa todos los campos y toma tu foto'), backgroundColor: Colors.orange));
-      return;
-    }
-
+    if (email.isEmpty || password.isEmpty || nombre.isEmpty || edad.isEmpty || _generoDetectado == null || _fotoPerfil == null) return;
     setState(() => _procesando = true);
 
     try {
@@ -445,12 +421,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
               TextField(controller: _nombreController, decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder())),
               const SizedBox(height: 25),
               if (_fotoPerfil == null)
-                ElevatedButton.icon(
-                  onPressed: procesarFoto,
-                  icon: const Icon(Icons.camera_alt),
-                  label: const Text('Tomar Foto para Análisis IA'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800], foregroundColor: Colors.white),
-                )
+                ElevatedButton.icon(onPressed: procesarFoto, icon: const Icon(Icons.camera_alt), label: const Text('Tomar Foto para Análisis IA'), style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800], foregroundColor: Colors.white))
               else ...[
                 const Icon(Icons.check_circle, color: Colors.green, size: 50),
                 const SizedBox(height: 10),
@@ -470,11 +441,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                 const SizedBox(height: 30),
                 _procesando
                     ? const CircularProgressIndicator()
-                    : ElevatedButton(
-                        onPressed: registrarYGuardar,
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
-                        child: const Text('Completar Registro'),
-                      )
+                    : ElevatedButton(onPressed: registrarYGuardar, style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)), child: const Text('Completar Registro'))
               ]
             ],
           ),
@@ -500,6 +467,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
   final Set<String> _solicitudesAceptadasNotificadas = {}; 
   final Set<String> _exploradoresCercanosNotificados = {};
   final AudioPlayer _audioPlayer = AudioPlayer(); 
+  bool _dialogoMultiplesAbierto = false;
 
   @override
   void initState() {
@@ -521,15 +489,8 @@ class _PantallaRadarState extends State<PantallaRadar> {
             
             if (miId == null || nuevoPerfil['id'] == miId) return;
 
-            if (widget.miLatitud != null && widget.miLongitud != null && 
-                nuevoPerfil['latitud'] != null && nuevoPerfil['longitud'] != null) {
-              
-              final distMetros = Geolocator.distanceBetween(
-                widget.miLatitud!, widget.miLongitud!,
-                (nuevoPerfil['latitud'] as num).toDouble(),
-                (nuevoPerfil['longitud'] as num).toDouble()
-              );
-
+            if (widget.miLatitud != null && widget.miLongitud != null && nuevoPerfil['latitud'] != null && nuevoPerfil['longitud'] != null) {
+              final distMetros = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, (nuevoPerfil['latitud'] as num).toDouble(), (nuevoPerfil['longitud'] as num).toDouble());
               if (distMetros <= 5000) {
                 final perfilId = nuevoPerfil['id'].toString();
                 if (!_exploradoresCercanosNotificados.contains(perfilId)) {
@@ -539,25 +500,16 @@ class _PantallaRadarState extends State<PantallaRadar> {
               }
             }
           },
-        )
-        .subscribe();
+        ).subscribe();
   }
 
   void _mostrarNotificacionCercania(String nombre, double distMetros) {
-    if (!globalDeseoCompletado) return;
-
+    if (!PantallaPrincipalState.deseoCompletado) return; 
     final distKm = (distMetros / 1000).toStringAsFixed(1);
     HapticFeedback.lightImpact();
     _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
-    
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('📍 ¡$nombre acaba de conectarse! Está a $distKm km de ti.'),
-          backgroundColor: Colors.blueAccent,
-          duration: const Duration(seconds: 4),
-        )
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('📍 ¡$nombre acaba de conectarse! Está a $distKm km de ti.'), backgroundColor: Colors.blueAccent, duration: const Duration(seconds: 4)));
     }
   }
 
@@ -566,10 +518,12 @@ class _PantallaRadarState extends State<PantallaRadar> {
     if (miId == null) return;
 
     _solicitudesSubscription = Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']).listen((solicitudes) async {
-      while (!globalDeseoCompletado) {
+      while (!PantallaPrincipalState.deseoCompletado) {
         await Future.delayed(const Duration(milliseconds: 300));
         if (!mounted) return;
       }
+
+      final nuevasPendientes = <Map<String, dynamic>>[];
 
       for (var s in solicitudes) {
         final solicitudId = s['id'].toString();
@@ -577,8 +531,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
         if (s['receptor_id'] == miId && s['estado'] == 'pendiente') {
           if (!_solicitudesNotificadas.contains(solicitudId)) {
             _solicitudesNotificadas.add(solicitudId);
-            final emisorData = await Supabase.instance.client.from('perfiles').select().eq('id', s['emisor_id']).maybeSingle();
-            if (emisorData != null && mounted) _mostrarAlertaSolicitud(context, solicitudId, emisorData);
+            nuevasPendientes.add(s);
           }
         }
 
@@ -592,15 +545,18 @@ class _PantallaRadarState extends State<PantallaRadar> {
           }
         }
       }
+
+      // Mostrar caja agrupada para todas las nuevas pendientes
+      if (nuevasPendientes.isNotEmpty && mounted && !_dialogoMultiplesAbierto) {
+        _mostrarAlertaMultiplesSolicitudes(context, nuevasPendientes);
+      }
     });
   }
 
-  void _mostrarAlertaSolicitud(BuildContext context, String solicitudId, Map<String, dynamic> emisor) {
+  void _mostrarAlertaMultiplesSolicitudes(BuildContext context, List<Map<String, dynamic>> pendientes) {
+    _dialogoMultiplesAbierto = true;
     HapticFeedback.heavyImpact();
     _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
-
-    final fotoUrl = emisor['foto_url']?.toString();
-    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
 
     showDialog(
       context: context,
@@ -608,46 +564,73 @@ class _PantallaRadarState extends State<PantallaRadar> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: Colors.grey[900],
-          title: const Text('¡Nueva solicitud!', style: TextStyle(color: Colors.greenAccent)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(radius: 45, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 45, color: Colors.black) : null),
-              const SizedBox(height: 15),
-              Text('${emisor['nombre']} (${emisor['edad']} años)', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-              const SizedBox(height: 8),
-              const Text('Quiere conectar contigo.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-            ],
+          title: const Text('¡Nuevas Solicitudes!', style: TextStyle(color: Colors.greenAccent)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: pendientes.length,
+              itemBuilder: (context, index) {
+                final s = pendientes[index];
+                return FutureBuilder<Map<String, dynamic>?>(
+                  future: Supabase.instance.client.from('perfiles').select().eq('id', s['emisor_id']).maybeSingle(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                    final emisor = snapshot.data!;
+                    final fotoUrl = emisor['foto_url']?.toString();
+                    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+                    
+                    return Card(
+                      color: Colors.grey[850],
+                      child: ListTile(
+                        leading: CircleAvatar(backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person) : null),
+                        title: Text('${emisor['nombre']}'),
+                        subtitle: const Text('Quiere conectar'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.red),
+                              onPressed: () async {
+                                await Supabase.instance.client.from('solicitudes').update({'estado': 'rechazada'}).eq('id', s['id']);
+                                if (pendientes.length == 1) Navigator.pop(context);
+                              }
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.check, color: Colors.green),
+                              onPressed: () async {
+                                await Supabase.instance.client.from('solicitudes').update({'estado': 'aceptada'}).eq('id', s['id']);
+                                if (pendientes.length == 1) Navigator.pop(context);
+                              }
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                );
+              },
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () async {
+              onPressed: () {
+                _dialogoMultiplesAbierto = false;
                 Navigator.pop(context);
-                await Supabase.instance.client.from('solicitudes').update({'estado': 'rechazada'}).eq('id', solicitudId);
-              },
-              child: const Text('Rechazar', style: TextStyle(color: Colors.red)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
-              onPressed: () async {
-                Navigator.pop(context);
-                await Supabase.instance.client.from('solicitudes').update({'estado': 'aceptada'}).eq('id', solicitudId);
-              },
-              child: const Text('Aceptar'),
-            ),
+              }, 
+              child: const Text('Cerrar')
+            )
           ],
         );
       },
-    );
+    ).then((_) => _dialogoMultiplesAbierto = false);
   }
 
   void _mostrarAlertaSolicitudAceptada(BuildContext context, Map<String, dynamic> receptor) {
     HapticFeedback.heavyImpact();
     _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
-
     final fotoUrl = receptor['foto_url']?.toString();
     final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
-
     showDialog(
       context: context,
       builder: (context) {
@@ -657,23 +640,11 @@ class _PantallaRadarState extends State<PantallaRadar> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircleAvatar(
-                radius: 45,
-                backgroundColor: Colors.greenAccent,
-                backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
-                child: !tieneFoto ? const Icon(Icons.person, size: 45, color: Colors.black) : null,
-              ),
+              CircleAvatar(radius: 45, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 45, color: Colors.black) : null),
               const SizedBox(height: 15),
-              Text(
-                '${receptor['nombre']} (${receptor['edad']} años)',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
+              Text('${receptor['nombre']} (${receptor['edad']} años)', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
               const SizedBox(height: 8),
-              const Text(
-                'Ha aceptado tu solicitud. ¡Ya pueden chatear!',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
+              const Text('Ha aceptado tu solicitud. ¡Ya pueden chatear!', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
             ],
           ),
           actionsAlignment: MainAxisAlignment.center,
@@ -682,14 +653,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
               onPressed: () {
                 Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => PantallaChat(
-                      receptorId: receptor['id'], 
-                      receptorNombre: receptor['nombre'] ?? 'Explorador'
-                    )
-                  )
-                );
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: receptor['id'], receptorNombre: receptor['nombre'] ?? 'Explorador')));
               },
               icon: const Icon(Icons.chat),
               label: const Text('Abrir Chat Ahora'),
@@ -714,14 +678,17 @@ class _PantallaRadarState extends State<PantallaRadar> {
       final usuarioActual = supabase.auth.currentUser;
       if (usuarioActual == null) return;
       
+      // Bloqueo estricto: Si ya existe una relación pendiente o aceptada con este usuario, no insertar otra fila.
       final existentes = await supabase.from('solicitudes').select().or('and(emisor_id.eq.${usuarioActual.id},receptor_id.eq.$receptorId),and(emisor_id.eq.$receptorId,receptor_id.eq.${usuarioActual.id})');
-      if (existentes.isNotEmpty && existentes.first['estado'] != 'rechazada') return;
+      if (existentes.isNotEmpty && existentes.first['estado'] != 'rechazada') {
+         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ya existe una conexión con este usuario'), backgroundColor: Colors.orange));
+         return;
+      }
 
       await supabase.from('solicitudes').insert({'emisor_id': usuarioActual.id, 'receptor_id': receptorId, 'estado': 'pendiente'});
       
       HapticFeedback.mediumImpact();
       _audioPlayer.play(AssetSource('sonidos/envio.mp3')).catchError((_) {});
-
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Solicitud enviada exitosamente'), backgroundColor: Colors.green));
     } catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
@@ -731,7 +698,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
   void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil, String distanciaTxt, bool esActivo, String estadoRelacion) {
     final fotoUrl = perfil['foto_url']?.toString();
     final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
-
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.grey[900],
@@ -745,14 +711,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
               Stack(
                 children: [
                   CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 20, height: 20,
-                      decoration: BoxDecoration(color: esActivo ? Colors.greenAccent : Colors.grey, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 3)),
-                    ),
-                  )
+                  Positioned(right: 0, bottom: 0, child: Container(width: 20, height: 20, decoration: BoxDecoration(color: esActivo ? Colors.greenAccent : Colors.grey, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 3))))
                 ],
               ),
               const SizedBox(height: 16),
@@ -762,16 +721,13 @@ class _PantallaRadarState extends State<PantallaRadar> {
               const SizedBox(height: 8),
               Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent)),
               const SizedBox(height: 24),
-              
               if (estadoRelacion == 'aceptada') 
                 ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(context);
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: perfil['id'], receptorNombre: perfil['nombre'])));
                   },
-                  icon: const Icon(Icons.chat),
-                  label: const Text('Abrir Chat'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
+                  icon: const Icon(Icons.chat), label: const Text('Abrir Chat'), style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
                 )
               else if (estadoRelacion == 'ninguna')
                 ElevatedButton.icon(
@@ -779,9 +735,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                     Navigator.pop(context);
                     enviarSolicitud(context, perfil['id']);
                   },
-                  icon: const Icon(Icons.send),
-                  label: const Text('Enviar Solicitud'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
+                  icon: const Icon(Icons.send), label: const Text('Enviar Solicitud'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
                 )
               else 
                 const Text('Solicitud pendiente de respuesta', style: TextStyle(color: Colors.orange, fontSize: 16, fontWeight: FontWeight.bold))
@@ -802,12 +756,10 @@ class _PantallaRadarState extends State<PantallaRadar> {
       stream: streamPerfiles,
       builder: (context, snapshotPerfiles) {
         if (!snapshotPerfiles.hasData) return const Center(child: CircularProgressIndicator());
-        
         return StreamBuilder<List<Map<String, dynamic>>>(
           stream: streamSolicitudes,
           builder: (context, snapshotSolicitudes) {
             if (!snapshotSolicitudes.hasData) return const Center(child: CircularProgressIndicator());
-
             final perfiles = snapshotPerfiles.data!.where((p) => p['id'] != miId).toList();
             final misSolicitudes = snapshotSolicitudes.data!.where((s) => s['emisor_id'] == miId || s['receptor_id'] == miId).toList();
             
@@ -819,16 +771,13 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 final lonB = (b['longitud'] as num?)?.toDouble();
                 if (latA == null || lonA == null) return 1;
                 if (latB == null || lonB == null) return -1;
-
                 final distA = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latA, lonA);
                 final distB = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latB, lonB);
                 return distA.compareTo(distB);
               });
             }
 
-            if (perfiles.isEmpty) {
-              return const Center(child: Text('No hay exploradores cerca de ti aún.', style: TextStyle(fontSize: 18, color: Colors.grey)));
-            }
+            if (perfiles.isEmpty) return const Center(child: Text('No hay exploradores cerca de ti aún.', style: TextStyle(fontSize: 18, color: Colors.grey)));
             
             return ListView.builder(
               padding: const EdgeInsets.all(16),
@@ -841,8 +790,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
 
                 bool esActivo = false;
                 if (perfil['ultima_conexion'] != null) {
-                  final ultimaConexion = DateTime.parse(perfil['ultima_conexion']);
-                  esActivo = DateTime.now().toUtc().difference(ultimaConexion).inMinutes <= 15;
+                  esActivo = DateTime.now().toUtc().difference(DateTime.parse(perfil['ultima_conexion'])).inMinutes <= 15;
                 }
 
                 String distanciaTxt = '📍 Ubicación desconocida';
@@ -852,28 +800,18 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 }
 
                 String estadoRelacion = 'ninguna';
-                Map<String, dynamic>? relacionExistente;
-                
                 try {
-                  relacionExistente = misSolicitudes.firstWhere((s) => (s['emisor_id'] == miId && s['receptor_id'] == otroId) || (s['emisor_id'] == otroId && s['receptor_id'] == miId));
+                  final relacionExistente = misSolicitudes.firstWhere((s) => (s['emisor_id'] == miId && s['receptor_id'] == otroId) || (s['emisor_id'] == otroId && s['receptor_id'] == miId));
                   estadoRelacion = relacionExistente['estado'];
-                } catch (e) {
-                  // Sin relación
-                }
+                } catch (e) {}
 
                 Widget botonAccion;
                 if (estadoRelacion == 'aceptada') {
-                  botonAccion = IconButton(
-                    icon: const Icon(Icons.chat, color: Colors.blueAccent),
-                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: perfil['nombre']))),
-                  );
+                  botonAccion = IconButton(icon: const Icon(Icons.chat, color: Colors.blueAccent), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: perfil['nombre']))));
                 } else if (estadoRelacion == 'pendiente') {
                   botonAccion = const Icon(Icons.access_time, color: Colors.orange);
                 } else {
-                  botonAccion = IconButton(
-                    icon: const Icon(Icons.send, color: Colors.greenAccent),
-                    onPressed: () => enviarSolicitud(context, otroId),
-                  );
+                  botonAccion = IconButton(icon: const Icon(Icons.send, color: Colors.greenAccent), onPressed: () => enviarSolicitud(context, otroId));
                 }
 
                 return Card(
@@ -884,23 +822,11 @@ class _PantallaRadarState extends State<PantallaRadar> {
                     leading: Stack(
                       children: [
                         CircleAvatar(backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null),
-                        Positioned(
-                          right: 0, bottom: 0,
-                          child: Container(
-                            width: 14, height: 14,
-                            decoration: BoxDecoration(color: esActivo ? Colors.greenAccent : Colors.grey, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2)),
-                          ),
-                        )
+                        Positioned(right: 0, bottom: 0, child: Container(width: 14, height: 14, decoration: BoxDecoration(color: esActivo ? Colors.greenAccent : Colors.grey, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2))))
                       ],
                     ),
                     title: Text('${perfil['nombre']} • ${perfil['edad']} años', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Desea: ${perfil['deseo_actual']}'),
-                        Text(distanciaTxt, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12)),
-                      ],
-                    ),
+                    subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Desea: ${perfil['deseo_actual']}'), Text(distanciaTxt, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12))]),
                     trailing: botonAccion,
                   ),
                 );
@@ -915,7 +841,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
 
 class PantallaMiPerfil extends StatefulWidget {
   const PantallaMiPerfil({super.key});
-
   @override
   State<PantallaMiPerfil> createState() => _PantallaMiPerfilState();
 }
@@ -973,13 +898,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 
     try {
       final miId = Supabase.instance.client.auth.currentUser!.id;
-      await Supabase.instance.client.from('perfiles').upsert({
-        'id': miId,
-        'nombre': nombre,
-        'edad': int.parse(edad),
-        'deseo_actual': deseo,
-        'preferencia': _preferencia,
-      });
+      await Supabase.instance.client.from('perfiles').upsert({'id': miId, 'nombre': nombre, 'edad': int.parse(edad), 'deseo_actual': deseo, 'preferencia': _preferencia});
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil guardado con éxito'), backgroundColor: Colors.green));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar: $e'), backgroundColor: Colors.red));
@@ -1012,9 +931,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
             onChanged: (value) => setState(() => _preferencia = value),
           ),
           const SizedBox(height: 30),
-          _guardando
-              ? const CircularProgressIndicator()
-              : ElevatedButton.icon(onPressed: _guardarCambios, icon: const Icon(Icons.save), label: const Text('Guardar Cambios'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)))
+          _guardando ? const CircularProgressIndicator() : ElevatedButton.icon(onPressed: _guardarCambios, icon: const Icon(Icons.save), label: const Text('Guardar Cambios'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)))
         ],
       ),
     );
@@ -1023,10 +940,6 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 
 class PantallaSolicitudesYChats extends StatelessWidget {
   const PantallaSolicitudesYChats({super.key});
-
-  Future<void> actualizarEstado(String solicitudId, String nuevoEstado) async {
-    await Supabase.instance.client.from('solicitudes').update({'estado': nuevoEstado}).eq('id', solicitudId);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1038,7 +951,20 @@ class PantallaSolicitudesYChats extends StatelessWidget {
         stream: streamSolicitudes,
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          final solicitudes = snapshot.data!;
+          final solicitudesTotales = snapshot.data!;
+          
+          // MAPEO ÚNICO PARA EVITAR DUPLICADOS (Como se ve en tu imagen 80497b.png)
+          final pendientesUnicas = <String, Map<String, dynamic>>{};
+          for (var s in solicitudesTotales.where((s) => s['receptor_id'] == miId && s['estado'] == 'pendiente')) {
+            pendientesUnicas[s['emisor_id']] = s;
+          }
+
+          final chatsUnicos = <String, Map<String, dynamic>>{};
+          for (var s in solicitudesTotales.where((s) => (s['emisor_id'] == miId || s['receptor_id'] == miId) && s['estado'] == 'aceptada')) {
+            final otroId = s['emisor_id'] == miId ? s['receptor_id'] : s['emisor_id'];
+            chatsUnicos[otroId] = s;
+          }
+
           return FutureBuilder<List<Map<String, dynamic>>>(
             future: Supabase.instance.client.from('perfiles').select(),
             builder: (context, perfilSnapshot) {
@@ -1048,7 +974,7 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 children: [
                   const Text('Solicitudes Pendientes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
-                  ...solicitudes.where((s) => s['receptor_id'] == miId && s['estado'] == 'pendiente').map((s) {
+                  ...pendientesUnicas.values.map((s) {
                     final emisor = perfilesMap[s['emisor_id']] ?? {};
                     return Card(
                       color: Colors.grey[850],
@@ -1058,8 +984,8 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () => actualizarEstado(s['id'], 'aceptada')),
-                            IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => actualizarEstado(s['id'], 'rechazada')),
+                            IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () async => await Supabase.instance.client.from('solicitudes').update({'estado': 'aceptada'}).eq('id', s['id'])),
+                            IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () async => await Supabase.instance.client.from('solicitudes').update({'estado': 'rechazada'}).eq('id', s['id'])),
                           ],
                         ),
                       ),
@@ -1067,7 +993,7 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                   }),
                   const SizedBox(height: 30),
                   const Text('Chats Activos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
-                  ...solicitudes.where((s) => (s['emisor_id'] == miId || s['receptor_id'] == miId) && s['estado'] == 'aceptada').map((s) {
+                  ...chatsUnicos.values.map((s) {
                     final otroId = s['emisor_id'] == miId ? s['receptor_id'] : s['emisor_id'];
                     final otroPerfil = perfilesMap[otroId] ?? {};
                     final fotoUrl = otroPerfil['foto_url']?.toString();
@@ -1113,17 +1039,9 @@ class _PantallaChatState extends State<PantallaChat> {
     final miId = Supabase.instance.client.auth.currentUser?.id;
     if (miId == null) return;
     _mensajeController.clear();
-    
     await Supabase.instance.client.from('mensajes').insert({'emisor_id': miId, 'receptor_id': widget.receptorId, 'contenido': texto});
-    
     HapticFeedback.lightImpact();
     _audioPlayer.play(AssetSource('sonidos/envio.mp3')).catchError((_) {});
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ Mensaje enviado'), backgroundColor: Colors.black87, duration: Duration(milliseconds: 800))
-      );
-    }
   }
 
   @override
@@ -1147,7 +1065,6 @@ class _PantallaChatState extends State<PantallaChat> {
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 final mensajes = snapshot.data!.where((m) => (m['emisor_id'] == miId && m['receptor_id'] == widget.receptorId) || (m['emisor_id'] == widget.receptorId && m['receptor_id'] == miId)).toList();
-
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.all(16),
@@ -1155,15 +1072,9 @@ class _PantallaChatState extends State<PantallaChat> {
                   itemBuilder: (context, index) {
                     final mensaje = mensajes[index];
                     final esMio = mensaje['emisor_id'] == miId;
-
                     return Align(
                       alignment: esMio ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: esMio ? Colors.green[800] : Colors.grey[800], borderRadius: BorderRadius.circular(12)),
-                        child: Text(mensaje['contenido'] ?? '', style: const TextStyle(color: Colors.white)),
-                      ),
+                      child: Container(margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: esMio ? Colors.green[800] : Colors.grey[800], borderRadius: BorderRadius.circular(12)), child: Text(mensaje['contenido'] ?? '', style: const TextStyle(color: Colors.white))),
                     );
                   },
                 );
