@@ -41,7 +41,6 @@ class PantallaPrincipal extends StatefulWidget {
   State<PantallaPrincipal> createState() => PantallaPrincipalState();
 }
 
-// SIN GUION BAJO PARA QUE SEA PÚBLICA
 class PantallaPrincipalState extends State<PantallaPrincipal> {
   int _indiceActual = 0;
   double? _miLatitud;
