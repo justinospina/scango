@@ -88,7 +88,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Actualiza tu estado para que otros sepan qué buscas hacer el día de hoy.', style: TextStyle(color: Colors.grey, fontSize: 14)),
+                const Text('Actualiza tu estado para que otros sepan qué buscas.', style: TextStyle(color: Colors.grey, fontSize: 14)),
                 const SizedBox(height: 20),
                 TextField(
                   controller: deseoController,
@@ -240,7 +240,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
                       .toSet();
 
                   mensajesNoLeidos = snapshotMensajes.data!
-                      .where((m) => m['receptor_id'] == miId && chatsActivosIds.contains(m['emisor_id']) && m['leido'] == false)
+                      .where((m) => m['receptor_id'] == miId && chatsActivosIds.contains(m['emisor_id']) && (m['leido'] == false || m['leido'] == null))
                       .length;
                 }
                 notificacionesTotales = solicitudesPendientes + mensajesNoLeidos;
@@ -478,6 +478,9 @@ class _PantallaRadarState extends State<PantallaRadar> {
   final Set<String> _exploradoresCercanosNotificados = {};
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _dialogoMultiplesAbierto = false;
+  
+  // VARIABLE DE CONTROL: Silencia popups del historial antiguo al iniciar sesión
+  bool _esPrimeraCargaSolicitudes = true; 
 
   @override
   void initState() {
@@ -541,16 +544,20 @@ class _PantallaRadarState extends State<PantallaRadar> {
         if (s['receptor_id'] == miId && s['estado'] == 'pendiente') {
           if (!_solicitudesNotificadas.contains(solicitudId)) {
             _solicitudesNotificadas.add(solicitudId);
-            nuevasPendientes.add(s);
+            // Solo muestra el popup visual si es una solicitud nueva real
+            if (!_esPrimeraCargaSolicitudes) nuevasPendientes.add(s);
           }
         }
 
         if (s['emisor_id'] == miId && s['estado'] == 'aceptada') {
           if (!_solicitudesAceptadasNotificadas.contains(solicitudId)) {
             _solicitudesAceptadasNotificadas.add(solicitudId);
-            final receptorData = await Supabase.instance.client.from('perfiles').select().eq('id', s['receptor_id']).maybeSingle();
-            if (receptorData != null && mounted) {
-              _mostrarAlertaSolicitudAceptada(context, receptorData);
+            // Solo alerta "Aceptada" si ocurre mientras usas la app
+            if (!_esPrimeraCargaSolicitudes) {
+              final receptorData = await Supabase.instance.client.from('perfiles').select().eq('id', s['receptor_id']).maybeSingle();
+              if (receptorData != null && mounted) {
+                _mostrarAlertaSolicitudAceptada(context, receptorData);
+              }
             }
           }
         }
@@ -559,6 +566,9 @@ class _PantallaRadarState extends State<PantallaRadar> {
       if (nuevasPendientes.isNotEmpty && mounted && !_dialogoMultiplesAbierto) {
         _mostrarAlertaMultiplesSolicitudes(context, nuevasPendientes);
       }
+
+      // Una vez procesada la carga masiva del historial, liberamos las alertas futuras
+      _esPrimeraCargaSolicitudes = false;
     });
   }
 
@@ -1218,19 +1228,22 @@ class _PantallaChatState extends State<PantallaChat> {
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: streamMensajes,
               builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error al cargar mensajes: ${snapshot.error}', style: const TextStyle(color: Colors.redAccent)));
+                }
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 
                 final mensajesAll = snapshot.data!;
                 final mensajes = mensajesAll.where((m) => (m['emisor_id'] == miId && m['receptor_id'] == widget.receptorId) || (m['emisor_id'] == widget.receptorId && m['receptor_id'] == miId)).toList();
 
-                final mensajesNoLeidos = mensajes.where((m) => m['receptor_id'] == miId && m['leido'] == false).toList();
+                final mensajesNoLeidos = mensajes.where((m) => m['receptor_id'] == miId && (m['leido'] == false || m['leido'] == null)).toList();
                 if (mensajesNoLeidos.isNotEmpty) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     Supabase.instance.client.from('mensajes')
                       .update({'leido': true})
                       .eq('receptor_id', miId!)
                       .eq('emisor_id', widget.receptorId)
-                      .eq('leido', false).then((_) {});
+                      .then((_) {}).catchError((_) {}); 
                   });
                 }
 
@@ -1243,14 +1256,36 @@ class _PantallaChatState extends State<PantallaChat> {
                     final esMio = mensaje['emisor_id'] == miId;
                     final textoOriginal = mensaje['contenido'] ?? '';
                     
-                    final fecha = DateTime.parse(mensaje['created_at']).toLocal();
+                    final createdAt = mensaje['created_at'];
+                    DateTime fecha = DateTime.now();
+                    if (createdAt != null) {
+                      fecha = DateTime.tryParse(createdAt.toString())?.toLocal() ?? DateTime.now();
+                    }
                     final horaStr = '${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
                     final leido = mensaje['leido'] ?? false;
 
                     Widget contenidoBurbuja;
-                    if (textoOriginal.startsWith('[IMG]')) {
-                      contenidoBurbuja = ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(textoOriginal.substring(5), width: 200, fit: BoxFit.cover));
-                    } else if (textoOriginal.startsWith('[VID]')) {
+                    if (textoOriginal.startsWith('[IMG]') && textoOriginal.length > 5) {
+                      contenidoBurbuja = ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          textoOriginal.substring(5), 
+                          width: 200, 
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            width: 200, height: 100, color: Colors.grey[850],
+                            child: const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.broken_image, color: Colors.grey, size: 30),
+                                SizedBox(height: 5),
+                                Text('Bloqueado por CORS', style: TextStyle(color: Colors.grey, fontSize: 10)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    } else if (textoOriginal.startsWith('[VID]') && textoOriginal.length > 5) {
                       contenidoBurbuja = ReproductorVideoWidget(url: textoOriginal.substring(5));
                     } else {
                       contenidoBurbuja = Text(textoOriginal, style: const TextStyle(color: Colors.white, fontSize: 16));
@@ -1323,7 +1358,7 @@ class _ReproductorVideoWidgetState extends State<ReproductorVideoWidget> {
     _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
       ..initialize().then((_) {
         if (mounted) setState(() => _inicializado = true);
-      });
+      }).catchError((e) {}); 
   }
 
   @override
