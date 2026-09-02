@@ -1210,6 +1210,7 @@ class _PantallaChatState extends State<PantallaChat> {
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: streamMensajes,
               builder: (context, snapshot) {
+                if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 
                 final mensajesAll = snapshot.data!;
@@ -1218,7 +1219,7 @@ class _PantallaChatState extends State<PantallaChat> {
                 final mensajesNoLeidos = mensajes.where((m) => m['receptor_id'] == miId && m['leido'] == false).toList();
                 if (mensajesNoLeidos.isNotEmpty) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    Supabase.instance.client.from('mensajes').update({'leido': true}).eq('receptor_id', miId!).eq('emisor_id', widget.receptorId).eq('leido', false).then((_) {});
+                    Supabase.instance.client.from('mensajes').update({'leido': true}).eq('receptor_id', miId!).eq('emisor_id', widget.receptorId).eq('leido', false).then((_) {}).catchError((_) {});
                   });
                 }
 
@@ -1231,14 +1232,35 @@ class _PantallaChatState extends State<PantallaChat> {
                     final esMio = mensaje['emisor_id'] == miId;
                     final textoOriginal = mensaje['contenido'] ?? '';
                     
-                    final fecha = DateTime.parse(mensaje['created_at']).toLocal();
+                    DateTime fecha = DateTime.now();
+                    if (mensaje['created_at'] != null) {
+                      fecha = DateTime.tryParse(mensaje['created_at'].toString())?.toLocal() ?? DateTime.now();
+                    }
                     final horaStr = '${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
                     final leido = mensaje['leido'] ?? false;
 
                     Widget contenidoBurbuja;
-                    if (textoOriginal.startsWith('[IMG]')) {
-                      contenidoBurbuja = ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(textoOriginal.substring(5), width: 200, fit: BoxFit.cover));
-                    } else if (textoOriginal.startsWith('[VID]')) {
+                    if (textoOriginal.startsWith('[IMG]') && textoOriginal.length > 5) {
+                      contenidoBurbuja = ClipRRect(
+                        borderRadius: BorderRadius.circular(8), 
+                        child: Image.network(
+                          textoOriginal.substring(5), 
+                          width: 200, 
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            width: 200, height: 100, color: Colors.grey[850],
+                            child: const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.broken_image, color: Colors.grey, size: 30),
+                                SizedBox(height: 5),
+                                Text('Bloqueado', style: TextStyle(color: Colors.grey, fontSize: 10)),
+                              ],
+                            ),
+                          ),
+                        )
+                      );
+                    } else if (textoOriginal.startsWith('[VID]') && textoOriginal.length > 5) {
                       contenidoBurbuja = ReproductorVideoWidget(url: textoOriginal.substring(5));
                     } else {
                       contenidoBurbuja = Text(textoOriginal, style: const TextStyle(color: Colors.white, fontSize: 16));
@@ -1310,7 +1332,7 @@ class _ReproductorVideoWidgetState extends State<ReproductorVideoWidget> {
     _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
       ..initialize().then((_) {
         if (mounted) setState(() => _inicializado = true);
-      });
+      }).catchError((_) {});
   }
 
   @override
