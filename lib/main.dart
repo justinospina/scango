@@ -44,6 +44,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   double? _miLatitud;
   double? _miLongitud;
   Timer? _heartbeatTimer;
+  bool _estaDisponible = true;
   
   @override
   void initState() {
@@ -59,6 +60,14 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   void dispose() {
     _heartbeatTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _cambiarDisponibilidad(bool valor) async {
+    setState(() => _estaDisponible = valor);
+    final miId = Supabase.instance.client.auth.currentUser?.id;
+    if (miId != null) {
+      await Supabase.instance.client.from('perfiles').update({'disponible': valor}).eq('id', miId);
+    }
   }
 
   Future<void> _actualizarUltimaConexion() async {
@@ -123,10 +132,21 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_indiceActual == 0 ? 'Radar Global' : 'Mi Perfil'),
-        centerTitle: true,
+        title: Text(_indiceActual == 0 ? 'Radar' : 'Mi Perfil', style: const TextStyle(fontSize: 18)),
+        centerTitle: false,
         leading: Icon(_indiceActual == 0 ? Icons.radar : Icons.account_circle, color: Colors.greenAccent),
         actions: [
+          Row(
+            children: [
+              Text(_estaDisponible ? 'Disponible' : 'Ocupado', style: TextStyle(color: _estaDisponible ? Colors.greenAccent : Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+              Switch(
+                value: _estaDisponible,
+                activeColor: Colors.greenAccent,
+                inactiveThumbColor: Colors.redAccent,
+                onChanged: _cambiarDisponibilidad,
+              ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline),
             onPressed: () {
@@ -304,6 +324,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         'preferencia': _preferencia,
         'foto_url': fotoUrl,
         'ultima_conexion': DateTime.now().toUtc().toIso8601String(),
+        'disponible': true,
       });
 
       if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PantallaPrincipal()), (route) => false);
@@ -415,7 +436,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 (nuevoPerfil['longitud'] as num).toDouble()
               );
 
-              if (distMetros <= 5000) {
+              if (distMetros <= 5000 && nuevoPerfil['disponible'] != false) {
                 final perfilId = nuevoPerfil['id'].toString();
                 if (!_exploradoresCercanosNotificados.contains(perfilId)) {
                   _exploradoresCercanosNotificados.add(perfilId);
@@ -592,7 +613,8 @@ class _PantallaRadarState extends State<PantallaRadar> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         
-        final perfiles = snapshot.data!.where((p) => p['id'] != miId).toList();
+        // Filtramos a nosotros mismos y a los usuarios con disponible = false
+        final perfiles = snapshot.data!.where((p) => p['id'] != miId && p['disponible'] != false).toList();
         
         if (widget.miLatitud != null && widget.miLongitud != null) {
           perfiles.sort((a, b) {
@@ -788,6 +810,26 @@ class PantallaSolicitudes extends StatelessWidget {
     await Supabase.instance.client.from('solicitudes').update({'estado': nuevoEstado}).eq('id', solicitudId);
   }
 
+  Future<void> _eliminarChat(BuildContext context, String solicitudId, String otroId, String miId) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('¿Eliminar chat?', style: TextStyle(color: Colors.redAccent)),
+        content: const Text('Esto borrará el historial de mensajes permanentemente para ambos.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), onPressed: () => Navigator.pop(context, true), child: const Text('Eliminar', style: TextStyle(color: Colors.white))),
+        ],
+      )
+    );
+
+    if (confirmar == true) {
+      await Supabase.instance.client.from('solicitudes').delete().eq('id', solicitudId);
+      await Supabase.instance.client.from('mensajes').delete().or('and(emisor_id.eq.$miId,receptor_id.eq.$otroId),and(emisor_id.eq.$otroId,receptor_id.eq.$miId)');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final miId = Supabase.instance.client.auth.currentUser?.id;
@@ -838,7 +880,10 @@ class PantallaSolicitudes extends StatelessWidget {
                         leading: CircleAvatar(backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null, child: fotoUrl == null ? const Icon(Icons.person) : null),
                         title: Text(otroPerfil['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
                         subtitle: const Text('Toca para abrir el chat'),
-                        trailing: const Icon(Icons.message, color: Colors.greenAccent),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                          onPressed: () => _eliminarChat(context, s['id'].toString(), otroId, miId!),
+                        ),
                         onTap: () {
                           Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: otroPerfil['nombre'] ?? 'Explorador')));
                         },
