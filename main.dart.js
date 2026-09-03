@@ -28124,6 +28124,7 @@ _.r=b
 _.w=c
 _.x=d
 _.y=!1
+_.z=!0
 _.c=_.a=null},
 ayO:function ayO(a){this.a=a},
 az1:function az1(){},
@@ -96146,23 +96147,26 @@ break}i=n.gL(n)
 h=J.a4(i)
 g=J.bV(h.h(i,"id"))
 if(J.d(h.h(i,"receptor_id"),l)&&J.d(h.h(i,"estado"),"pendiente"))if(!k.n(0,g)){k.D(0,g)
-m.push(i)}s=J.d(h.h(i,"emisor_id"),l)&&J.d(h.h(i,"estado"),"aceptada")?8:9
+if(!o.z)m.push(i)}s=J.d(h.h(i,"emisor_id"),l)&&J.d(h.h(i,"estado"),"aceptada")?8:9
 break
 case 8:s=!j.n(0,g)?10:11
 break
 case 10:j.D(0,g)
-f=$.c7().b
+s=!o.z?12:13
+break
+case 12:f=$.c7().b
 f===$&&A.a()
-s=12
+s=14
 return A.m(f.cE("perfiles").qj(0).fH("id",h.h(i,"receptor_id")).Dv(),$async$$1)
-case 12:e=c
+case 14:e=c
 if(e!=null&&o.c!=null){i=o.c
 i.toString
-o.aiW(i,e)}case 11:case 9:s=6
+o.aiW(i,e)}case 13:case 11:case 9:s=6
 break
 case 7:if(m.length!==0&&o.c!=null&&!o.y){n=o.c
 n.toString
-o.aiV(n,m)}case 1:return A.q(q,r)}})
+o.aiV(n,m)}o.z=!1
+case 1:return A.q(q,r)}})
 return A.r($async$$1,r)},
 $S:620}
 A.ayV.prototype={

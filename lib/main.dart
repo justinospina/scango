@@ -497,6 +497,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
   final Set<String> _exploradoresCercanosNotificados = {};
   final AudioPlayer _audioPlayer = AudioPlayer(); 
   bool _dialogoMultiplesAbierto = false;
+  bool _esPrimeraCargaSolicitudes = true; // Control de silenciamiento de historial
 
   @override
   void initState() {
@@ -563,16 +564,18 @@ class _PantallaRadarState extends State<PantallaRadar> {
         if (s['receptor_id'] == miId && s['estado'] == 'pendiente') {
           if (!_solicitudesNotificadas.contains(solicitudId)) {
             _solicitudesNotificadas.add(solicitudId);
-            nuevasPendientes.add(s);
+            if (!_esPrimeraCargaSolicitudes) nuevasPendientes.add(s);
           }
         }
 
         if (s['emisor_id'] == miId && s['estado'] == 'aceptada') {
           if (!_solicitudesAceptadasNotificadas.contains(solicitudId)) {
             _solicitudesAceptadasNotificadas.add(solicitudId);
-            final receptorData = await Supabase.instance.client.from('perfiles').select().eq('id', s['receptor_id']).maybeSingle();
-            if (receptorData != null && mounted) {
-              _mostrarAlertaSolicitudAceptada(context, receptorData);
+            if (!_esPrimeraCargaSolicitudes) {
+              final receptorData = await Supabase.instance.client.from('perfiles').select().eq('id', s['receptor_id']).maybeSingle();
+              if (receptorData != null && mounted) {
+                _mostrarAlertaSolicitudAceptada(context, receptorData);
+              }
             }
           }
         }
@@ -581,6 +584,8 @@ class _PantallaRadarState extends State<PantallaRadar> {
       if (nuevasPendientes.isNotEmpty && mounted && !_dialogoMultiplesAbierto) {
         _mostrarAlertaMultiplesSolicitudes(context, nuevasPendientes);
       }
+
+      _esPrimeraCargaSolicitudes = false; // Finaliza la evaluación de los datos antiguos
     });
   }
 
