@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:video_player/video_player.dart';
+import 'package:flutter_app_badger/flutter_app_badger.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -195,6 +196,20 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
     }
   }
 
+  void _actualizarBadgeDelIcono(int contador) {
+    if (!kIsWeb) {
+      FlutterAppBadger.isAppBadgeSupported().then((soportado) {
+        if (soportado) {
+          if (contador > 0) {
+            FlutterAppBadger.updateBadgeCount(contador);
+          } else {
+            FlutterAppBadger.removeBadge();
+          }
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final miId = Supabase.instance.client.auth.currentUser?.id;
@@ -231,6 +246,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
             icon: const Icon(Icons.logout),
             onPressed: () async {
               await Supabase.instance.client.auth.signOut();
+              if (!kIsWeb) FlutterAppBadger.removeBadge();
               if (context.mounted) {
                 Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PantallaLogin()), (route) => false);
               }
@@ -272,6 +288,9 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
                       .length;
                 }
                 notificacionesTotales = solicitudesPendientes + mensajesNoLeidos;
+                
+                // Actualiza el badge en el ícono de la app del teléfono
+                _actualizarBadgeDelIcono(notificacionesTotales);
               }
 
               return BottomNavigationBar(
@@ -1104,12 +1123,12 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                                 CircleAvatar(backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null, child: fotoUrl == null ? const Icon(Icons.person) : null),
                                 if (mensajesSinLeer > 0)
                                   Positioned(
-                                    right: -2,
-                                    top: -2,
+                                    right: -4,
+                                    top: -4,
                                     child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                      child: Text('$mensajesSinLeer', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2)),
+                                      child: Text('$mensajesSinLeer', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
                                     ),
                                   )
                               ],
