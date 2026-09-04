@@ -1031,76 +1031,104 @@ class PantallaSolicitudesYChats extends StatelessWidget {
   Widget build(BuildContext context) {
     final miId = Supabase.instance.client.auth.currentUser?.id;
     final streamSolicitudes = Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']);
+    final streamMensajes = Supabase.instance.client.from('mensajes').stream(primaryKey: ['id']);
 
     return Scaffold(
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: streamSolicitudes,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          final solicitudesTotales = snapshot.data!;
+        builder: (context, snapshotSolicitudes) {
+          if (!snapshotSolicitudes.hasData) return const Center(child: CircularProgressIndicator());
           
-          final pendientesUnicas = <String, Map<String, dynamic>>{};
-          for (var s in solicitudesTotales.where((s) => s['receptor_id'] == miId && s['estado'] == 'pendiente')) {
-            pendientesUnicas[s['emisor_id']] = s;
-          }
+          return StreamBuilder<List<Map<String, dynamic>>>(
+            stream: streamMensajes,
+            builder: (context, snapshotMensajes) {
+              if (!snapshotMensajes.hasData) return const Center(child: CircularProgressIndicator());
 
-          final chatsUnicos = <String, Map<String, dynamic>>{};
-          for (var s in solicitudesTotales.where((s) => (s['emisor_id'] == miId || s['receptor_id'] == miId) && s['estado'] == 'aceptada')) {
-            final otroId = s['emisor_id'] == miId ? s['receptor_id'] : s['emisor_id'];
-            chatsUnicos[otroId] = s;
-          }
+              final solicitudesTotales = snapshotSolicitudes.data!;
+              final mensajesTotales = snapshotMensajes.data!;
+              
+              final pendientesUnicas = <String, Map<String, dynamic>>{};
+              for (var s in solicitudesTotales.where((s) => s['receptor_id'] == miId && s['estado'] == 'pendiente')) {
+                pendientesUnicas[s['emisor_id']] = s;
+              }
 
-          return FutureBuilder<List<Map<String, dynamic>>>(
-            future: Supabase.instance.client.from('perfiles').select(),
-            builder: (context, perfilSnapshot) {
-              if (!perfilSnapshot.hasData) return const Center(child: CircularProgressIndicator());
-              final perfilesMap = {for (var p in perfilSnapshot.data!) p['id']: p};
-              return ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  if (pendientesUnicas.isNotEmpty) ...[
-                    const Text('Solicitudes Pendientes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
-                    ...pendientesUnicas.values.map((s) {
-                      final emisor = perfilesMap[s['emisor_id']] ?? {};
-                      return Card(
-                        color: Colors.grey[850],
-                        child: ListTile(
-                          title: Text(emisor['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
-                          subtitle: const Text('Quiere conectar contigo'),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () async => await Supabase.instance.client.from('solicitudes').update({'estado': 'aceptada'}).eq('id', s['id'])),
-                              IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () async => await Supabase.instance.client.from('solicitudes').update({'estado': 'rechazada'}).eq('id', s['id'])),
-                            ],
+              final chatsUnicos = <String, Map<String, dynamic>>{};
+              for (var s in solicitudesTotales.where((s) => (s['emisor_id'] == miId || s['receptor_id'] == miId) && s['estado'] == 'aceptada')) {
+                final otroId = s['emisor_id'] == miId ? s['receptor_id'] : s['emisor_id'];
+                chatsUnicos[otroId] = s;
+              }
+
+              return FutureBuilder<List<Map<String, dynamic>>>(
+                future: Supabase.instance.client.from('perfiles').select(),
+                builder: (context, perfilSnapshot) {
+                  if (!perfilSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+                  final perfilesMap = {for (var p in perfilSnapshot.data!) p['id']: p};
+                  return ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      if (pendientesUnicas.isNotEmpty) ...[
+                        const Text('Solicitudes Pendientes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
+                        ...pendientesUnicas.values.map((s) {
+                          final emisor = perfilesMap[s['emisor_id']] ?? {};
+                          return Card(
+                            color: Colors.grey[850],
+                            child: ListTile(
+                              title: Text(emisor['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
+                              subtitle: const Text('Quiere conectar contigo'),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () async => await Supabase.instance.client.from('solicitudes').update({'estado': 'aceptada'}).eq('id', s['id'])),
+                                  IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () async => await Supabase.instance.client.from('solicitudes').update({'estado': 'rechazada'}).eq('id', s['id'])),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: 30),
+                      ],
+                      const Text('Chats Activos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
+                      ...chatsUnicos.values.map((s) {
+                        final otroId = s['emisor_id'] == miId ? s['receptor_id'] : s['emisor_id'];
+                        final otroPerfil = perfilesMap[otroId] ?? {};
+                        final fotoUrl = otroPerfil['foto_url']?.toString();
+                        
+                        final mensajesSinLeer = mensajesTotales.where((m) => m['receptor_id'] == miId && m['emisor_id'] == otroId && (m['leido'] == null || m['leido'] == false)).length;
+
+                        return Card(
+                          color: Colors.grey[900],
+                          child: ListTile(
+                            leading: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                CircleAvatar(backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null, child: fotoUrl == null ? const Icon(Icons.person) : null),
+                                if (mensajesSinLeer > 0)
+                                  Positioned(
+                                    right: -2,
+                                    top: -2,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                      child: Text('$mensajesSinLeer', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    ),
+                                  )
+                              ],
+                            ),
+                            title: Text(otroPerfil['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
+                            subtitle: const Text('Toca para abrir el chat'),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                              onPressed: () => _eliminarVinculoYCreados(context, s['id'].toString(), otroId, miId!),
+                            ),
+                            onTap: () {
+                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: otroPerfil['nombre'] ?? 'Explorador', receptorFoto: fotoUrl)));
+                            },
                           ),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 30),
-                  ],
-                  const Text('Chats Activos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
-                  ...chatsUnicos.values.map((s) {
-                    final otroId = s['emisor_id'] == miId ? s['receptor_id'] : s['emisor_id'];
-                    final otroPerfil = perfilesMap[otroId] ?? {};
-                    final fotoUrl = otroPerfil['foto_url']?.toString();
-                    return Card(
-                      color: Colors.grey[900],
-                      child: ListTile(
-                        leading: CircleAvatar(backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null, child: fotoUrl == null ? const Icon(Icons.person) : null),
-                        title: Text(otroPerfil['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
-                        subtitle: const Text('Toca para abrir el chat'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
-                          onPressed: () => _eliminarVinculoYCreados(context, s['id'].toString(), otroId, miId!),
-                        ),
-                        onTap: () {
-                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: otroPerfil['nombre'] ?? 'Explorador', receptorFoto: fotoUrl)));
-                        },
-                      ),
-                    );
-                  }),
-                ],
+                        );
+                      }),
+                    ],
+                  );
+                },
               );
             },
           );
