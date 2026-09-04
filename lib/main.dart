@@ -289,7 +289,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
                 }
                 notificacionesTotales = solicitudesPendientes + mensajesNoLeidos;
                 
-                // Actualiza el badge en el ícono de la app del teléfono
+                // Actualiza el badge global del sistema operativo
                 _actualizarBadgeDelIcono(notificacionesTotales);
               }
 
@@ -516,7 +516,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
   final Set<String> _exploradoresCercanosNotificados = {};
   final AudioPlayer _audioPlayer = AudioPlayer(); 
   bool _dialogoMultiplesAbierto = false;
-  bool _esPrimeraCargaSolicitudes = true; // Control de silenciamiento de historial
+  bool _esPrimeraCargaSolicitudes = true; 
 
   @override
   void initState() {
@@ -538,7 +538,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
             
             if (miId == null || nuevoPerfil['id'] == miId) return;
 
-            // Evitar notificar si el usuario está ocupado
             if (nuevoPerfil['disponible'] == false) return;
 
             if (widget.miLatitud != null && widget.miLongitud != null && nuevoPerfil['latitud'] != null && nuevoPerfil['longitud'] != null) {
@@ -604,7 +603,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
         _mostrarAlertaMultiplesSolicitudes(context, nuevasPendientes);
       }
 
-      _esPrimeraCargaSolicitudes = false; // Finaliza la evaluación de los datos antiguos
+      _esPrimeraCargaSolicitudes = false; 
     });
   }
 
@@ -825,7 +824,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
             final perfiles = todosLosPerfiles.where((p) {
               if (p['id'] == miId || p['ultima_conexion'] == null) return false;
               
-              // Ocultar del radar si apagó su botón de "Disponible"
               if (p['disponible'] == false) return false;
 
               final ultimaConexion = DateTime.parse(p['ultima_conexion']);
@@ -1123,12 +1121,12 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                                 CircleAvatar(backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null, child: fotoUrl == null ? const Icon(Icons.person) : null),
                                 if (mensajesSinLeer > 0)
                                   Positioned(
-                                    right: -4,
-                                    top: -4,
+                                    right: -6,
+                                    top: -6,
                                     child: Container(
-                                      padding: const EdgeInsets.all(6),
+                                      padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2)),
-                                      child: Text('$mensajesSinLeer', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                                      child: Text('$mensajesSinLeer', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                                     ),
                                   )
                               ],
