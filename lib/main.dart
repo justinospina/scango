@@ -265,9 +265,14 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
           )
         ],
       ),
-      body: IndexedStack(
-        index: _indiceActual,
-        children: pantallas,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 700),
+          child: IndexedStack(
+            index: _indiceActual,
+            children: pantallas,
+          ),
+        ),
       ),
       bottomNavigationBar: StreamBuilder<List<Map<String, dynamic>>>(
         stream: Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']),
@@ -366,27 +371,30 @@ class _PantallaLoginState extends State<PantallaLogin> {
     return Scaffold(
       appBar: AppBar(title: const Text('Acceso a ScanGo')),
       body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.radar, size: 100, color: Colors.greenAccent),
-              const SizedBox(height: 30),
-              TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder())),
-              const SizedBox(height: 15),
-              TextField(controller: _passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder())),
-              const SizedBox(height: 25),
-              _procesando
-                  ? const CircularProgressIndicator()
-                  : Column(
-                      children: [
-                        ElevatedButton.icon(onPressed: iniciarSesion, icon: const Icon(Icons.login), label: const Text('Iniciar Sesión'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50))),
-                        const SizedBox(height: 10),
-                        TextButton(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PantallaRegistro())), style: TextButton.styleFrom(foregroundColor: Colors.greenAccent), child: const Text('Crear cuenta nueva'))
-                      ],
-                    )
-            ],
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.radar, size: 100, color: Colors.greenAccent),
+                const SizedBox(height: 30),
+                TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder())),
+                const SizedBox(height: 15),
+                TextField(controller: _passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder())),
+                const SizedBox(height: 25),
+                _procesando
+                    ? const CircularProgressIndicator()
+                    : Column(
+                        children: [
+                          ElevatedButton.icon(onPressed: iniciarSesion, icon: const Icon(Icons.login), label: const Text('Iniciar Sesión'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50))),
+                          const SizedBox(height: 10),
+                          TextButton(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PantallaRegistro())), style: TextButton.styleFrom(foregroundColor: Colors.greenAccent), child: const Text('Crear cuenta nueva'))
+                        ],
+                      )
+              ],
+            ),
           ),
         ),
       ),
@@ -502,65 +510,68 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     return Scaffold(
       appBar: AppBar(title: const Text('Crea tu Cuenta')),
       body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder())),
-              const SizedBox(height: 15),
-              TextField(controller: _passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder())),
-              const SizedBox(height: 15),
-              TextField(controller: _nombreController, decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder())),
-              const SizedBox(height: 25),
-              if (_fotoPerfil == null)
-                ElevatedButton.icon(onPressed: procesarFoto, icon: const Icon(Icons.camera_alt), label: const Text('Tomar Foto para Análisis IA'), style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800], foregroundColor: Colors.white))
-              else ...[
-                const Icon(Icons.check_circle, color: Colors.green, size: 50),
-                const SizedBox(height: 10),
-                if (_procesandoIA) const CircularProgressIndicator()
-                else Text('IA Detectó: $_generoDetectado', style: const TextStyle(fontSize: 20, color: Colors.greenAccent)),
-              ],
-              const SizedBox(height: 25),
-              if (_generoDetectado != null && !_procesandoIA) ...[
-                DropdownButtonFormField<String>(
-                  value: _generoDetectado,
-                  decoration: const InputDecoration(labelText: 'Confirma tu Género', border: OutlineInputBorder()),
-                  items: ['MUJER', 'HOMBRE'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
-                  onChanged: (value) => setState(() => _generoDetectado = value!),
-                ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder())),
                 const SizedBox(height: 15),
-                TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Ingresa tu Edad', border: OutlineInputBorder())),
+                TextField(controller: _passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder())),
                 const SizedBox(height: 15),
-                DropdownButtonFormField<String>(
-                  value: _preferencia,
-                  decoration: const InputDecoration(labelText: 'Preferencia', border: OutlineInputBorder()),
-                  items: ['MUJER', 'HOMBRE', 'AMBAS'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
-                  onChanged: (value) => setState(() => _preferencia = value!),
-                ),
-                const SizedBox(height: 15),
-                Row(
-                  children: [
-                    Checkbox(
-                      value: _aceptaPoliticas,
-                      activeColor: Colors.greenAccent,
-                      checkColor: Colors.black,
-                      onChanged: (val) => setState(() => _aceptaPoliticas = val ?? false),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: _mostrarPoliticas,
-                        child: const Text('Acepto la Política de Tratamiento de Datos Personales', style: TextStyle(color: Colors.blueAccent, decoration: TextDecoration.underline, fontSize: 13)),
+                TextField(controller: _nombreController, decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder())),
+                const SizedBox(height: 25),
+                if (_fotoPerfil == null)
+                  ElevatedButton.icon(onPressed: procesarFoto, icon: const Icon(Icons.camera_alt), label: const Text('Tomar Foto para Análisis IA'), style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800], foregroundColor: Colors.white))
+                else ...[
+                  const Icon(Icons.check_circle, color: Colors.green, size: 50),
+                  const SizedBox(height: 10),
+                  if (_procesandoIA) const CircularProgressIndicator()
+                  else Text('IA Detectó: $_generoDetectado', style: const TextStyle(fontSize: 20, color: Colors.greenAccent)),
+                ],
+                const SizedBox(height: 25),
+                if (_generoDetectado != null && !_procesandoIA) ...[
+                  DropdownButtonFormField<String>(
+                    value: _generoDetectado,
+                    decoration: const InputDecoration(labelText: 'Confirma tu Género', border: OutlineInputBorder()),
+                    items: ['MUJER', 'HOMBRE'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
+                    onChanged: (value) => setState(() => _generoDetectado = value!),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Ingresa tu Edad', border: OutlineInputBorder())),
+                  const SizedBox(height: 15),
+                  DropdownButtonFormField<String>(
+                    value: _preferencia,
+                    decoration: const InputDecoration(labelText: 'Preferencia', border: OutlineInputBorder()),
+                    items: ['MUJER', 'HOMBRE', 'AMBAS'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
+                    onChanged: (value) => setState(() => _preferencia = value!),
+                  ),
+                  const SizedBox(height: 15),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: _aceptaPoliticas,
+                        activeColor: Colors.greenAccent,
+                        checkColor: Colors.black,
+                        onChanged: (val) => setState(() => _aceptaPoliticas = val ?? false),
                       ),
-                    )
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _procesando
-                    ? const CircularProgressIndicator()
-                    : ElevatedButton(onPressed: registrarYGuardar, style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)), child: const Text('Completar Registro'))
-              ]
-            ],
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _mostrarPoliticas,
+                          child: const Text('Acepto la Política de Tratamiento de Datos Personales', style: TextStyle(color: Colors.blueAccent, decoration: TextDecoration.underline, fontSize: 13)),
+                        ),
+                      )
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _procesando
+                      ? const CircularProgressIndicator()
+                      : ElevatedButton(onPressed: registrarYGuardar, style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)), child: const Text('Completar Registro'))
+                ]
+              ],
+            ),
           ),
         ),
       ),
@@ -578,6 +589,34 @@ class PantallaMuro extends StatefulWidget {
 
 class _PantallaMuroState extends State<PantallaMuro> {
   final ImagePicker _picker = ImagePicker();
+
+  Future<void> _eliminarPublicacion(String pubId) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('¿Eliminar publicación?', style: TextStyle(color: Colors.redAccent)),
+        content: const Text('Esta acción borrará la publicación del muro de todos los exploradores.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      try {
+        await Supabase.instance.client.from('publicaciones').delete().eq('id', pubId);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Publicación eliminada'), backgroundColor: Colors.green));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al eliminar: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
 
   Future<void> _abrirCrearPublicacion() async {
     final miId = Supabase.instance.client.auth.currentUser?.id;
@@ -651,59 +690,62 @@ class _PantallaMuroState extends State<PantallaMuro> {
 
             return Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Nueva Publicación', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
-                  const SizedBox(height: 15),
-                  TextField(
-                    controller: txtController,
-                    maxLines: 3,
-                    decoration: InputDecoration(hintText: '¿Qué quieres compartir?', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: whatsappController,
-                    keyboardType: TextInputType.phone,
-                    decoration: InputDecoration(
-                      hintText: 'Tu WhatsApp (Opcional)', 
-                      prefixIcon: const Icon(Icons.phone, color: Colors.greenAccent),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 700),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Nueva Publicación', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
+                    const SizedBox(height: 15),
+                    TextField(
+                      controller: txtController,
+                      maxLines: 3,
+                      decoration: InputDecoration(hintText: '¿Qué quieres compartir?', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
                     ),
-                  ),
-                  const SizedBox(height: 15),
-                  if (mediaFile != null)
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      margin: const EdgeInsets.only(bottom: 10),
-                      decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(8)),
-                      child: Row(
-                        children: [
-                          Icon(mediaTipo == 'vid' ? Icons.videocam : Icons.image, color: Colors.greenAccent),
-                          const SizedBox(width: 10),
-                          Expanded(child: Text(mediaFile!.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
-                          IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setStateModal(() { mediaFile = null; mediaTipo = null; }))
-                        ],
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: whatsappController,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        hintText: 'Tu WhatsApp (Opcional)', 
+                        prefixIcon: const Icon(Icons.phone, color: Colors.greenAccent),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))
                       ),
                     ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      IconButton(icon: const Icon(Icons.camera_alt), color: Colors.blueAccent, onPressed: () => seleccionarMedia(ImageSource.camera, 'img')),
-                      IconButton(icon: const Icon(Icons.image), color: Colors.blueAccent, onPressed: () => seleccionarMedia(ImageSource.gallery, 'img')),
-                      IconButton(icon: const Icon(Icons.videocam), color: Colors.blueAccent, onPressed: () => seleccionarMedia(ImageSource.camera, 'vid')),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  procesando
-                    ? const CircularProgressIndicator()
-                    : ElevatedButton(
-                        onPressed: publicar,
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
-                        child: const Text('Publicar Ahora'),
+                    const SizedBox(height: 15),
+                    if (mediaFile != null)
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(8)),
+                        child: Row(
+                          children: [
+                            Icon(mediaTipo == 'vid' ? Icons.videocam : Icons.image, color: Colors.greenAccent),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(mediaFile!.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+                            IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setStateModal(() { mediaFile = null; mediaTipo = null; }))
+                          ],
+                        ),
                       ),
-                  const SizedBox(height: 20),
-                ],
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        IconButton(icon: const Icon(Icons.camera_alt), color: Colors.blueAccent, onPressed: () => seleccionarMedia(ImageSource.camera, 'img')),
+                        IconButton(icon: const Icon(Icons.image), color: Colors.blueAccent, onPressed: () => seleccionarMedia(ImageSource.gallery, 'img')),
+                        IconButton(icon: const Icon(Icons.videocam), color: Colors.blueAccent, onPressed: () => seleccionarMedia(ImageSource.camera, 'vid')),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    procesando
+                      ? const CircularProgressIndicator()
+                      : ElevatedButton(
+                          onPressed: publicar,
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
+                          child: const Text('Publicar Ahora'),
+                        ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
               ),
             );
           }
@@ -714,12 +756,14 @@ class _PantallaMuroState extends State<PantallaMuro> {
 
   @override
   Widget build(BuildContext context) {
+    final miId = Supabase.instance.client.auth.currentUser?.id;
     final streamPublicaciones = Supabase.instance.client.from('publicaciones').stream(primaryKey: ['id']).order('created_at', ascending: false);
 
     return Scaffold(
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: streamPublicaciones,
         builder: (context, snapshotPubs) {
+          if (snapshotPubs.hasError) return Center(child: Text('Error cargando Muro:\n${snapshotPubs.error}', style: const TextStyle(color: Colors.redAccent), textAlign: TextAlign.center));
           if (!snapshotPubs.hasData) return const Center(child: CircularProgressIndicator());
           final publicaciones = snapshotPubs.data!;
 
@@ -728,6 +772,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
           return FutureBuilder<List<Map<String, dynamic>>>(
             future: Supabase.instance.client.from('perfiles').select(),
             builder: (context, snapshotPerfiles) {
+              if (snapshotPerfiles.hasError) return Center(child: Text('Error cargando Perfiles:\n${snapshotPerfiles.error}', style: const TextStyle(color: Colors.redAccent), textAlign: TextAlign.center));
               if (!snapshotPerfiles.hasData) return const Center(child: CircularProgressIndicator());
               final perfilesMap = {for (var p in snapshotPerfiles.data!) p['id']: p};
 
@@ -739,22 +784,29 @@ class _PantallaMuroState extends State<PantallaMuro> {
                   final autor = perfilesMap[pub['usuario_id']] ?? {};
                   final fotoAutor = autor['foto_url']?.toString();
                   final tieneFotoAutor = fotoAutor != null && fotoAutor.trim().isNotEmpty;
-                  final fecha = DateTime.parse(pub['created_at']).toLocal();
+                  
+                  DateTime fecha = DateTime.now();
+                  if (pub['created_at'] != null) {
+                    fecha = DateTime.tryParse(pub['created_at'].toString())?.toLocal() ?? DateTime.now();
+                  }
                   final fechaStr = '${fecha.day}/${fecha.month} ${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
+                  
                   final whatsapp = pub['whatsapp']?.toString();
+                  final esMio = pub['usuario_id'] == miId;
 
                   return Card(
                     color: Colors.grey[900],
                     margin: const EdgeInsets.only(bottom: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     child: Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
                               CircleAvatar(backgroundImage: tieneFotoAutor ? NetworkImage(fotoAutor) : null, child: !tieneFotoAutor ? const Icon(Icons.person) : null),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -764,12 +816,17 @@ class _PantallaMuroState extends State<PantallaMuro> {
                                   ],
                                 ),
                               ),
+                              if (esMio)
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                  onPressed: () => _eliminarPublicacion(pub['id'].toString()),
+                                ),
                             ],
                           ),
                           const SizedBox(height: 12),
                           if (pub['texto'] != null && pub['texto'].toString().isNotEmpty)
                             Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.only(bottom: 12),
                               child: Text(pub['texto'], style: const TextStyle(fontSize: 15)),
                             ),
                           if (pub['media_url'] != null)
@@ -781,7 +838,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
                             ),
                           if (whatsapp != null && whatsapp.trim().isNotEmpty)
                             Padding(
-                              padding: const EdgeInsets.only(top: 12),
+                              padding: const EdgeInsets.only(top: 16),
                               child: ElevatedButton.icon(
                                 onPressed: () async {
                                   final numeroLimpio = whatsapp.replaceAll(RegExp(r'[^0-9]'), '');
@@ -793,11 +850,12 @@ class _PantallaMuroState extends State<PantallaMuro> {
                                   }
                                 },
                                 icon: const Icon(Icons.chat, color: Colors.white),
-                                label: const Text('Contactar por WhatsApp'),
+                                label: const Text('Contactar por WhatsApp', style: TextStyle(fontWeight: FontWeight.bold)),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF25D366),
                                   foregroundColor: Colors.white,
-                                  minimumSize: const Size(double.infinity, 40),
+                                  minimumSize: const Size(double.infinity, 45),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                                 ),
                               ),
                             ),
@@ -1633,110 +1691,116 @@ class _PantallaChatState extends State<PantallaChat> {
           ],
         )
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: streamMensajes,
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                
-                final mensajesAll = snapshot.data!;
-                final mensajes = mensajesAll.where((m) => (m['emisor_id'] == miId && m['receptor_id'] == widget.receptorId) || (m['emisor_id'] == widget.receptorId && m['receptor_id'] == miId)).toList();
-
-                final mensajesNoLeidos = mensajes.where((m) => m['receptor_id'] == miId && m['leido'] == false).toList();
-                if (mensajesNoLeidos.isNotEmpty) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    Supabase.instance.client.from('mensajes').update({'leido': true}).eq('receptor_id', miId!).eq('emisor_id', widget.receptorId).eq('leido', false).then((_) {});
-                  });
-                }
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: mensajes.length,
-                  itemBuilder: (context, index) {
-                    final mensaje = mensajes[index];
-                    final esMio = mensaje['emisor_id'] == miId;
-                    final textoOriginal = mensaje['contenido'] ?? '';
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 700),
+          child: Column(
+            children: [
+              Expanded(
+                child: StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: streamMensajes,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                     
-                    DateTime fecha = DateTime.now();
-                    if (mensaje['created_at'] != null) {
-                      fecha = DateTime.tryParse(mensaje['created_at'].toString())?.toLocal() ?? DateTime.now();
-                    }
-                    final horaStr = '${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
-                    final leido = mensaje['leido'] ?? false;
+                    final mensajesAll = snapshot.data!;
+                    final mensajes = mensajesAll.where((m) => (m['emisor_id'] == miId && m['receptor_id'] == widget.receptorId) || (m['emisor_id'] == widget.receptorId && m['receptor_id'] == miId)).toList();
 
-                    Widget contenidoBurbuja;
-                    if (textoOriginal.startsWith('[IMG]') && textoOriginal.length > 5) {
-                      contenidoBurbuja = ClipRRect(
-                        borderRadius: BorderRadius.circular(8), 
-                        child: Image.network(
-                          textoOriginal.substring(5), 
-                          width: 200, 
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            width: 200, height: 100, color: Colors.grey[850],
-                            child: const Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                    final mensajesNoLeidos = mensajes.where((m) => m['receptor_id'] == miId && m['leido'] == false).toList();
+                    if (mensajesNoLeidos.isNotEmpty) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        Supabase.instance.client.from('mensajes').update({'leido': true}).eq('receptor_id', miId!).eq('emisor_id', widget.receptorId).eq('leido', false).then((_) {}).catchError((_) {});
+                      });
+                    }
+
+                    return ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      itemCount: mensajes.length,
+                      itemBuilder: (context, index) {
+                        final mensaje = mensajes[index];
+                        final esMio = mensaje['emisor_id'] == miId;
+                        final textoOriginal = mensaje['contenido'] ?? '';
+                        
+                        DateTime fecha = DateTime.now();
+                        if (mensaje['created_at'] != null) {
+                          fecha = DateTime.tryParse(mensaje['created_at'].toString())?.toLocal() ?? DateTime.now();
+                        }
+                        final horaStr = '${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
+                        final leido = mensaje['leido'] ?? false;
+
+                        Widget contenidoBurbuja;
+                        if (textoOriginal.startsWith('[IMG]') && textoOriginal.length > 5) {
+                          contenidoBurbuja = ClipRRect(
+                            borderRadius: BorderRadius.circular(8), 
+                            child: Image.network(
+                              textoOriginal.substring(5), 
+                              width: 200, 
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                width: 200, height: 100, color: Colors.grey[850],
+                                child: const Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.broken_image, color: Colors.grey, size: 30),
+                                    SizedBox(height: 5),
+                                    Text('Bloqueado', style: TextStyle(color: Colors.grey, fontSize: 10)),
+                                  ],
+                                ),
+                              ),
+                            )
+                          );
+                        } else if (textoOriginal.startsWith('[VID]') && textoOriginal.length > 5) {
+                          contenidoBurbuja = ReproductorVideoWidget(url: textoOriginal.substring(5));
+                        } else {
+                          contenidoBurbuja = Text(textoOriginal, style: const TextStyle(color: Colors.white, fontSize: 16));
+                        }
+
+                        return Align(
+                          alignment: esMio ? Alignment.centerRight : Alignment.centerLeft,
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(vertical: 4),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(color: esMio ? Colors.green[800] : Colors.grey[800], borderRadius: BorderRadius.circular(12)),
+                            child: Column(
+                              crossAxisAlignment: esMio ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.broken_image, color: Colors.grey, size: 30),
-                                SizedBox(height: 5),
-                                Text('Bloqueado', style: TextStyle(color: Colors.grey, fontSize: 10)),
+                                contenidoBurbuja,
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(horaStr, style: const TextStyle(fontSize: 10, color: Colors.white70)),
+                                    if (esMio) ...[
+                                      const SizedBox(width: 4),
+                                      Icon(Icons.done_all, size: 14, color: leido ? Colors.blueAccent : Colors.grey),
+                                    ]
+                                  ],
+                                )
                               ],
                             ),
                           ),
-                        )
-                      );
-                    } else if (textoOriginal.startsWith('[VID]') && textoOriginal.length > 5) {
-                      contenidoBurbuja = ReproductorVideoWidget(url: textoOriginal.substring(5));
-                    } else {
-                      contenidoBurbuja = Text(textoOriginal, style: const TextStyle(color: Colors.white, fontSize: 16));
-                    }
-
-                    return Align(
-                      alignment: esMio ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: esMio ? Colors.green[800] : Colors.grey[800], borderRadius: BorderRadius.circular(12)),
-                        child: Column(
-                          crossAxisAlignment: esMio ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                          children: [
-                            contenidoBurbuja,
-                            const SizedBox(height: 4),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(horaStr, style: const TextStyle(fontSize: 10, color: Colors.white70)),
-                                if (esMio) ...[
-                                  const SizedBox(width: 4),
-                                  Icon(Icons.done_all, size: 14, color: leido ? Colors.blueAccent : Colors.grey),
-                                ]
-                              ],
-                            )
-                          ],
-                        ),
-                      ),
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Row(
+                  children: [
+                    IconButton(icon: const Icon(Icons.attach_file, color: Colors.grey), onPressed: _mostrarOpcionesMultimedia),
+                    Expanded(child: TextField(controller: _mensajeController, decoration: const InputDecoration(hintText: 'Mensaje...', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10)))),
+                    _subiendoMedia
+                      ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+                      : IconButton(icon: const Icon(Icons.send, color: Colors.greenAccent), onPressed: () => enviarMensaje()),
+                  ],
+                ),
+              ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                IconButton(icon: const Icon(Icons.attach_file, color: Colors.grey), onPressed: _mostrarOpcionesMultimedia),
-                Expanded(child: TextField(controller: _mensajeController, decoration: const InputDecoration(hintText: 'Mensaje...', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10)))),
-                _subiendoMedia
-                  ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
-                  : IconButton(icon: const Icon(Icons.send, color: Colors.greenAccent), onPressed: () => enviarMensaje()),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
