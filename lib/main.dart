@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -216,15 +217,25 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
 
     final List<Widget> pantallas = [
       PantallaRadar(miLatitud: _miLatitud, miLongitud: _miLongitud),
+      const PantallaMuro(),
       const PantallaSolicitudesYChats(),
       const PantallaMiPerfil(),
     ];
 
+    String getTitulo() {
+      switch (_indiceActual) {
+        case 0: return 'Radar';
+        case 1: return 'Muro de Exploradores';
+        case 2: return 'Chats';
+        case 3: return 'Mi Perfil';
+        default: return 'ScanGo';
+      }
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_indiceActual == 0 ? 'Radar' : (_indiceActual == 1 ? 'Chats' : 'Perfil')),
+        title: Text(getTitulo()),
         centerTitle: false,
-        leading: Icon(_indiceActual == 0 ? Icons.radar : (_indiceActual == 1 ? Icons.chat_bubble : Icons.account_circle), color: Colors.greenAccent),
         actions: [
           Row(
             children: [
@@ -289,7 +300,6 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
                 }
                 notificacionesTotales = solicitudesPendientes + mensajesNoLeidos;
                 
-                // Actualiza el badge global del sistema operativo
                 _actualizarBadgeDelIcono(notificacionesTotales);
               }
 
@@ -298,9 +308,11 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
                 selectedItemColor: Colors.greenAccent,
                 unselectedItemColor: Colors.grey,
                 backgroundColor: Colors.grey[900],
+                type: BottomNavigationBarType.fixed,
                 onTap: (index) => setState(() => _indiceActual = index),
                 items: [
                   const BottomNavigationBarItem(icon: Icon(Icons.radar), label: 'Radar'),
+                  const BottomNavigationBarItem(icon: Icon(Icons.view_day), label: 'Muro'),
                   BottomNavigationBarItem(
                     icon: Badge(
                       backgroundColor: Colors.red,
@@ -400,6 +412,30 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   bool _procesandoIA = false;
   String? _generoDetectado;
   String _preferencia = 'AMBAS';
+  bool _aceptaPoliticas = false;
+
+  void _mostrarPoliticas() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Política de Tratamiento de Datos', style: TextStyle(color: Colors.greenAccent)),
+        content: const SingleChildScrollView(
+          child: Text(
+            'En cumplimiento de la Ley 1581 de 2012 (Habeas Data):\n\n'
+            '1. Datos Recopilados: ScanGo almacena tu ubicación GPS en tiempo real, fotografías biométricas temporales (cuyo género detectado por la IA puede ser corregido libremente por ti), edad y contenido de chats.\n\n'
+            '2. Finalidad: Tu ubicación y preferencias cruzadas se usan exclusivamente para el "Radar" de proximidad y el Muro social. No vendemos ni cedemos tus datos a terceros.\n\n'
+            '3. Control y Eliminación: Tienes total autonomía para ocultarte del Radar (botón Disponible/Ocupado) y para eliminar vínculos o el historial completo de mensajes y multimedia de la base de datos de manera definitiva.\n\n'
+            '4. Consentimiento: Al registrarte, autorizas a ScanGo a tratar tus datos bajo estrictos parámetros de seguridad y confidencialidad.',
+            style: TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido', style: TextStyle(color: Colors.greenAccent)))
+        ],
+      ),
+    );
+  }
 
   Future<void> procesarFoto() async {
     final XFile? foto = await _picker.pickImage(source: ImageSource.camera, maxWidth: 600);
@@ -415,7 +451,16 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     final nombre = _nombreController.text.trim();
     final edad = _edadController.text.trim();
 
-    if (email.isEmpty || password.isEmpty || nombre.isEmpty || edad.isEmpty || _generoDetectado == null || _fotoPerfil == null) return;
+    if (!_aceptaPoliticas) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Debes aceptar la política de tratamiento de datos para continuar'), backgroundColor: Colors.orange));
+      return;
+    }
+
+    if (email.isEmpty || password.isEmpty || nombre.isEmpty || edad.isEmpty || _generoDetectado == null || _fotoPerfil == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, completa todos los campos requeridos'), backgroundColor: Colors.redAccent));
+      return;
+    }
+    
     setState(() => _procesando = true);
 
     try {
@@ -478,6 +523,13 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
               ],
               const SizedBox(height: 25),
               if (_generoDetectado != null && !_procesandoIA) ...[
+                DropdownButtonFormField<String>(
+                  value: _generoDetectado,
+                  decoration: const InputDecoration(labelText: 'Confirma tu Género', border: OutlineInputBorder()),
+                  items: ['MUJER', 'HOMBRE'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
+                  onChanged: (value) => setState(() => _generoDetectado = value!),
+                ),
+                const SizedBox(height: 15),
                 TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Ingresa tu Edad', border: OutlineInputBorder())),
                 const SizedBox(height: 15),
                 DropdownButtonFormField<String>(
@@ -486,7 +538,24 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                   items: ['MUJER', 'HOMBRE', 'AMBAS'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
                   onChanged: (value) => setState(() => _preferencia = value!),
                 ),
-                const SizedBox(height: 30),
+                const SizedBox(height: 15),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _aceptaPoliticas,
+                      activeColor: Colors.greenAccent,
+                      checkColor: Colors.black,
+                      onChanged: (val) => setState(() => _aceptaPoliticas = val ?? false),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: _mostrarPoliticas,
+                        child: const Text('Acepto la Política de Tratamiento de Datos Personales', style: TextStyle(color: Colors.blueAccent, decoration: TextDecoration.underline, fontSize: 13)),
+                      ),
+                    )
+                  ],
+                ),
+                const SizedBox(height: 20),
                 _procesando
                     ? const CircularProgressIndicator()
                     : ElevatedButton(onPressed: registrarYGuardar, style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)), child: const Text('Completar Registro'))
@@ -494,6 +563,258 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ==================== PANTALLA MURO (FEED) ====================
+class PantallaMuro extends StatefulWidget {
+  const PantallaMuro({super.key});
+
+  @override
+  State<PantallaMuro> createState() => _PantallaMuroState();
+}
+
+class _PantallaMuroState extends State<PantallaMuro> {
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _abrirCrearPublicacion() async {
+    final miId = Supabase.instance.client.auth.currentUser?.id;
+    if (miId == null) return;
+
+    final txtController = TextEditingController();
+    final whatsappController = TextEditingController();
+    XFile? mediaFile;
+    String? mediaTipo;
+    bool procesando = false;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            Future<void> seleccionarMedia(ImageSource origen, String tipo) async {
+              try {
+                final XFile? archivo = tipo == 'vid'
+                    ? await _picker.pickVideo(source: origen)
+                    : await _picker.pickImage(source: origen, imageQuality: 70);
+                if (archivo != null) {
+                  setStateModal(() {
+                    mediaFile = archivo;
+                    mediaTipo = tipo;
+                  });
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error al adjuntar archivo')));
+              }
+            }
+
+            Future<void> publicar() async {
+              final texto = txtController.text.trim();
+              if (texto.isEmpty && mediaFile == null) return;
+              
+              setStateModal(() => procesando = true);
+              
+              String? urlFinal;
+              try {
+                if (mediaFile != null) {
+                  final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}.${mediaTipo == 'vid' ? 'mp4' : 'jpg'}';
+                  if (!kIsWeb) {
+                    await Supabase.instance.client.storage.from('chat-media').upload(fileName, File(mediaFile!.path));
+                  } else {
+                    await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, await mediaFile!.readAsBytes());
+                  }
+                  urlFinal = Supabase.instance.client.storage.from('chat-media').getPublicUrl(fileName);
+                }
+
+                await Supabase.instance.client.from('publicaciones').insert({
+                  'usuario_id': miId,
+                  'texto': texto,
+                  'media_url': urlFinal,
+                  'tipo': mediaTipo,
+                  'whatsapp': whatsappController.text.trim(),
+                });
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Publicado con éxito'), backgroundColor: Colors.green));
+                }
+              } catch (e) {
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                setStateModal(() => procesando = false);
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Nueva Publicación', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: txtController,
+                    maxLines: 3,
+                    decoration: InputDecoration(hintText: '¿Qué quieres compartir?', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: whatsappController,
+                    keyboardType: TextInputType.phone,
+                    decoration: InputDecoration(
+                      hintText: 'Tu WhatsApp (Opcional)', 
+                      prefixIcon: const Icon(Icons.phone, color: Colors.greenAccent),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  if (mediaFile != null)
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(8)),
+                      child: Row(
+                        children: [
+                          Icon(mediaTipo == 'vid' ? Icons.videocam : Icons.image, color: Colors.greenAccent),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(mediaFile!.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+                          IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setStateModal(() { mediaFile = null; mediaTipo = null; }))
+                        ],
+                      ),
+                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      IconButton(icon: const Icon(Icons.camera_alt), color: Colors.blueAccent, onPressed: () => seleccionarMedia(ImageSource.camera, 'img')),
+                      IconButton(icon: const Icon(Icons.image), color: Colors.blueAccent, onPressed: () => seleccionarMedia(ImageSource.gallery, 'img')),
+                      IconButton(icon: const Icon(Icons.videocam), color: Colors.blueAccent, onPressed: () => seleccionarMedia(ImageSource.camera, 'vid')),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  procesando
+                    ? const CircularProgressIndicator()
+                    : ElevatedButton(
+                        onPressed: publicar,
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
+                        child: const Text('Publicar Ahora'),
+                      ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            );
+          }
+        );
+      }
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final streamPublicaciones = Supabase.instance.client.from('publicaciones').stream(primaryKey: ['id']).order('created_at', ascending: false);
+
+    return Scaffold(
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: streamPublicaciones,
+        builder: (context, snapshotPubs) {
+          if (!snapshotPubs.hasData) return const Center(child: CircularProgressIndicator());
+          final publicaciones = snapshotPubs.data!;
+
+          if (publicaciones.isEmpty) return const Center(child: Text('El muro está vacío. ¡Sé el primero en publicar!', style: TextStyle(color: Colors.grey)));
+
+          return FutureBuilder<List<Map<String, dynamic>>>(
+            future: Supabase.instance.client.from('perfiles').select(),
+            builder: (context, snapshotPerfiles) {
+              if (!snapshotPerfiles.hasData) return const Center(child: CircularProgressIndicator());
+              final perfilesMap = {for (var p in snapshotPerfiles.data!) p['id']: p};
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: publicaciones.length,
+                itemBuilder: (context, index) {
+                  final pub = publicaciones[index];
+                  final autor = perfilesMap[pub['usuario_id']] ?? {};
+                  final fotoAutor = autor['foto_url']?.toString();
+                  final tieneFotoAutor = fotoAutor != null && fotoAutor.trim().isNotEmpty;
+                  final fecha = DateTime.parse(pub['created_at']).toLocal();
+                  final fechaStr = '${fecha.day}/${fecha.month} ${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
+                  final whatsapp = pub['whatsapp']?.toString();
+
+                  return Card(
+                    color: Colors.grey[900],
+                    margin: const EdgeInsets.only(bottom: 16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(backgroundImage: tieneFotoAutor ? NetworkImage(fotoAutor) : null, child: !tieneFotoAutor ? const Icon(Icons.person) : null),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(autor['nombre'] ?? 'Usuario', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+                                    Text(fechaStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          if (pub['texto'] != null && pub['texto'].toString().isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Text(pub['texto'], style: const TextStyle(fontSize: 15)),
+                            ),
+                          if (pub['media_url'] != null)
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: pub['tipo'] == 'vid'
+                                  ? ReproductorVideoWidget(url: pub['media_url'])
+                                  : Image.network(pub['media_url'], width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50, color: Colors.grey)),
+                            ),
+                          if (whatsapp != null && whatsapp.trim().isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  final numeroLimpio = whatsapp.replaceAll(RegExp(r'[^0-9]'), '');
+                                  final url = Uri.parse('https://wa.me/$numeroLimpio');
+                                  if (await canLaunchUrl(url)) {
+                                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                                  } else {
+                                    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir WhatsApp')));
+                                  }
+                                },
+                                icon: const Icon(Icons.chat, color: Colors.white),
+                                label: const Text('Contactar por WhatsApp'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF25D366),
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size(double.infinity, 40),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _abrirCrearPublicacion,
+        backgroundColor: Colors.greenAccent,
+        child: const Icon(Icons.add, color: Colors.black),
       ),
     );
   }
@@ -683,36 +1004,54 @@ class _PantallaRadarState extends State<PantallaRadar> {
   void _mostrarAlertaSolicitudAceptada(BuildContext context, Map<String, dynamic> receptor) {
     HapticFeedback.heavyImpact();
     _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
+
     final fotoUrl = receptor['foto_url']?.toString();
     final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.grey[900],
-          title: const Text('¡Solicitud Aceptada! 🎉', style: TextStyle(color: Colors.greenAccent), textAlign: TextAlign.center),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(radius: 45, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 45, color: Colors.black) : null),
-              const SizedBox(height: 15),
-              Text('${receptor['nombre']} (${receptor['edad']} años)', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-              const SizedBox(height: 8),
-              const Text('Ha aceptado tu solicitud. ¡Ya pueden chatear!', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-            ],
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: receptor['id'], receptorNombre: receptor['nombre'] ?? 'Explorador')));
-              },
-              icon: const Icon(Icons.chat),
-              label: const Text('Abrir Chat Ahora'),
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(20),
+          child: Container(
+            decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(16)),
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircleAvatar(radius: 45, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 45, color: Colors.black) : null),
+                      const SizedBox(height: 15),
+                      Text('${receptor['nombre']} (${receptor['edad']} años)', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                      const SizedBox(height: 8),
+                      const Text('Ha aceptado tu solicitud. ¡Ya pueden chatear!', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: receptor['id'], receptorNombre: receptor['nombre'] ?? 'Explorador', receptorFoto: fotoUrl)));
+                        },
+                        icon: const Icon(Icons.chat),
+                        label: const Text('Abrir Chat Ahora'),
+                      ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  right: 5,
+                  top: 5,
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.grey),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
@@ -1020,6 +1359,38 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 class PantallaSolicitudesYChats extends StatelessWidget {
   const PantallaSolicitudesYChats({super.key});
 
+  void _mostrarPerfilRapidoLectura(BuildContext context, Map<String, dynamic> perfil) {
+    final fotoUrl = perfil['foto_url']?.toString();
+    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
+              const SizedBox(height: 16),
+              Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+              const SizedBox(height: 8),
+              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent)),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[700], foregroundColor: Colors.white),
+                child: const Text('Cerrar'),
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _eliminarVinculoYCreados(BuildContext context, String solicitudId, String otroId, String miId) async {
     final confirmar = await showDialog<bool>(
       context: context,
@@ -1118,7 +1489,10 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                             leading: Stack(
                               clipBehavior: Clip.none,
                               children: [
-                                CircleAvatar(backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null, child: fotoUrl == null ? const Icon(Icons.person) : null),
+                                GestureDetector(
+                                  onTap: () => _mostrarPerfilRapidoLectura(context, otroPerfil),
+                                  child: CircleAvatar(backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null, child: fotoUrl == null ? const Icon(Icons.person) : null),
+                                ),
                                 if (mensajesSinLeer > 0)
                                   Positioned(
                                     right: -6,
@@ -1131,8 +1505,11 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                                   )
                               ],
                             ),
-                            title: Text(otroPerfil['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
-                            subtitle: const Text('Toca para abrir el chat'),
+                            title: GestureDetector(
+                               onTap: () => _mostrarPerfilRapidoLectura(context, otroPerfil),
+                               child: Text(otroPerfil['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            ),
+                            subtitle: const Text('Toca aquí para abrir el chat'),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
                               onPressed: () => _eliminarVinculoYCreados(context, s['id'].toString(), otroId, miId!),
@@ -1192,6 +1569,7 @@ class _PantallaChatState extends State<PantallaChat> {
           : await _picker.pickImage(source: origen, imageQuality: 70);
           
       if (archivo == null) return;
+      
       setState(() => _subiendoMedia = true);
       
       final miId = Supabase.instance.client.auth.currentUser!.id;
@@ -1204,6 +1582,7 @@ class _PantallaChatState extends State<PantallaChat> {
       }
       
       final url = Supabase.instance.client.storage.from('chat-media').getPublicUrl(fileName);
+      
       final prefijo = tipo == 'video' ? '[VID]' : '[IMG]';
       await enviarMensaje(textoFijo: '$prefijo$url');
       
@@ -1260,7 +1639,6 @@ class _PantallaChatState extends State<PantallaChat> {
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: streamMensajes,
               builder: (context, snapshot) {
-                if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 
                 final mensajesAll = snapshot.data!;
@@ -1269,7 +1647,7 @@ class _PantallaChatState extends State<PantallaChat> {
                 final mensajesNoLeidos = mensajes.where((m) => m['receptor_id'] == miId && m['leido'] == false).toList();
                 if (mensajesNoLeidos.isNotEmpty) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    Supabase.instance.client.from('mensajes').update({'leido': true}).eq('receptor_id', miId!).eq('emisor_id', widget.receptorId).eq('leido', false).then((_) {}).catchError((_) {});
+                    Supabase.instance.client.from('mensajes').update({'leido': true}).eq('receptor_id', miId!).eq('emisor_id', widget.receptorId).eq('leido', false).then((_) {});
                   });
                 }
 
