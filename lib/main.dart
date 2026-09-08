@@ -121,6 +121,14 @@ class _ScanGoAppState extends State<ScanGoApp> with WidgetsBindingObserver {
         localizedReason: 'Desbloquea ScanGo para continuar',
       );
 
+      if (exitoso) {
+        final miId = Supabase.instance.client.auth.currentUser?.id;
+        if (miId != null) {
+          // Marca al usuario como verificado en la base de datos tras un login biométrico exitoso
+          await Supabase.instance.client.from('perfiles').update({'verificado_biometria': true}).eq('id', miId);
+        }
+      }
+
       if (mounted) setState(() => _autenticado = exitoso);
     } catch (e) {
       debugPrint("Error biometría: $e");
@@ -135,7 +143,6 @@ class _ScanGoAppState extends State<ScanGoApp> with WidgetsBindingObserver {
     return MaterialApp(
       title: 'ScanGo',
       theme: ThemeData.dark(),
-      // El Muro Público es ahora el Index principal si no hay sesión
       home: Supabase.instance.client.auth.currentSession == null
           ? const PantallaMuro(esInvitado: true)
           : (_autenticado 
@@ -370,7 +377,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
       switch (_indiceActual) {
         case 0: return 'Radar';
         case 1: return 'Muro de Exploradores';
-        case 2: return 'Solicitudes y Chats';
+        case 2: return 'Chats';
         case 3: return 'Mi Perfil';
         default: return 'ScanGo';
       }
@@ -584,9 +591,9 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         content: const SingleChildScrollView(
           child: Text(
             'En cumplimiento de la Ley 1581 de 2012 (Habeas Data):\n\n'
-            '1. Datos Recopilados: ScanGo almacena tu ubicación GPS en tiempo real, fotografías biométricas temporales (cuyo género detectado por la IA puede ser corregido libremente por ti), edad y contenido de chats.\n\n'
+            '1. Datos Recopilados: ScanGo almacena tu ubicación GPS en tiempo real, fotografías biométricas temporales, edad y contenido de chats.\n\n'
             '2. Finalidad: Tu ubicación y preferencias cruzadas se usan exclusivamente para el "Radar" de proximidad y el Muro social. No vendemos ni cedemos tus datos a terceros.\n\n'
-            '3. Control y Eliminación: Tienes total autonomía para ocultarte del Radar (botón Disponible/Ocupado) y para eliminar vínculos o el historial completo de mensajes y multimedia de la base de datos de manera definitiva.\n\n'
+            '3. Control y Eliminación: Tienes total autonomía para ocultarte del Radar (botón Disponible/Ocupado) y para eliminar vínculos o el historial completo de mensajes.\n\n'
             '4. Consentimiento: Al registrarte, autorizas a ScanGo a tratar tus datos bajo estrictos parámetros de seguridad y confidencialidad.',
             style: TextStyle(color: Colors.white70, fontSize: 14),
           ),
@@ -646,6 +653,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         'foto_url': fotoUrl,
         'ultima_conexion': DateTime.now().toUtc().toIso8601String(),
         'disponible': true,
+        'verificado_biometria': false, // Inicia como no verificado hasta el primer login biométrico
       });
 
       if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PantallaPrincipal()), (route) => false);
@@ -1074,6 +1082,9 @@ class _PantallaMuroState extends State<PantallaMuro> {
                             final fotoAutor = autor['foto_url']?.toString();
                             final tieneFotoAutor = fotoAutor != null && fotoAutor.trim().isNotEmpty;
                             
+                            // IDENTIFICADOR DE VERIFICACIÓN BIOMÉTRICA
+                            final esVerificado = autor['verificado_biometria'] == true;
+                            
                             DateTime fecha = DateTime.now();
                             if (pub['created_at'] != null) {
                               fecha = DateTime.tryParse(pub['created_at'].toString())?.toLocal() ?? DateTime.now();
@@ -1100,7 +1111,15 @@ class _PantallaMuroState extends State<PantallaMuro> {
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Text(autor['nombre'] ?? 'Usuario', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+                                              Row(
+                                                children: [
+                                                  Text(autor['nombre'] ?? 'Usuario', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+                                                  if (esVerificado) ...[
+                                                    const SizedBox(width: 4),
+                                                    const Icon(Icons.verified, color: Colors.blueAccent, size: 16),
+                                                  ],
+                                                ],
+                                              ),
                                               Text('${pub['ciudad'] ?? 'Sin Ciudad'}, ${pub['departamento'] ?? ''} • ${pub['categoria'] ?? ''}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
                                               Text(fechaStr, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                             ],
@@ -1445,6 +1464,8 @@ class _PantallaRadarState extends State<PantallaRadar> {
   void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil, String distanciaTxt, bool esActivo, String estadoRelacion) {
     final fotoUrl = perfil['foto_url']?.toString();
     final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+    final esVerificado = perfil['verificado_biometria'] == true;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.grey[900],
@@ -1462,7 +1483,16 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 ],
               ),
               const SizedBox(height: 16),
-              Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                  if (esVerificado) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.verified, color: Colors.blueAccent, size: 22),
+                  ],
+                ],
+              ),
               const SizedBox(height: 4),
               Text(distanciaTxt, style: const TextStyle(fontSize: 14, color: Colors.orangeAccent)),
               const SizedBox(height: 8),
@@ -1556,6 +1586,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 final otroId = perfil['id'];
                 final fotoUrl = perfil['foto_url']?.toString();
                 final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+                final esVerificado = perfil['verificado_biometria'] == true;
 
                 String distanciaTxt = '📍 Ubicación desconocida';
                 if (widget.miLatitud != null && widget.miLongitud != null && perfil['latitud'] != null && perfil['longitud'] != null) {
@@ -1589,7 +1620,16 @@ class _PantallaRadarState extends State<PantallaRadar> {
                         Positioned(right: 0, bottom: 0, child: Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2))))
                       ],
                     ),
-                    title: Text('${perfil['nombre']} • ${perfil['edad']} años', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    title: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('${perfil['nombre']} • ${perfil['edad']} años', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                        if (esVerificado) ...[
+                          const SizedBox(width: 4),
+                          const Icon(Icons.verified, color: Colors.blueAccent, size: 16),
+                        ],
+                      ],
+                    ),
                     subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Desea: ${perfil['deseo_actual']}'), Text(distanciaTxt, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12))]),
                     trailing: botonAccion,
                   ),
@@ -1616,6 +1656,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
   String? _genero;
   String? _preferencia;
   String? _fotoUrl;
+  bool _esVerificado = false;
   bool _cargando = true;
   bool _guardando = false;
 
@@ -1639,6 +1680,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
             _genero = perfil['genero'] ?? 'HOMBRE';
             _preferencia = perfil['preferencia'] ?? 'AMBAS';
             _fotoUrl = perfil['foto_url'];
+            _esVerificado = perfil['verificado_biometria'] == true;
           });
         }
         setState(() => _cargando = false);
@@ -1683,6 +1725,17 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       child: Column(
         children: [
           CircleAvatar(radius: 60, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null, child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.black) : null),
+          if (_esVerificado) ...[
+            const SizedBox(height: 10),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.verified, color: Colors.blueAccent, size: 20),
+                SizedBox(width: 5),
+                Text('Usuario Verificado', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold))
+              ],
+            )
+          ],
           const SizedBox(height: 25),
           TextField(controller: _nombreController, decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder())),
           const SizedBox(height: 15),
@@ -1717,6 +1770,7 @@ class PantallaSolicitudesYChats extends StatelessWidget {
   void _mostrarPerfilRapidoLectura(BuildContext context, Map<String, dynamic> perfil) {
     final fotoUrl = perfil['foto_url']?.toString();
     final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+    final esVerificado = perfil['verificado_biometria'] == true;
     
     showModalBottomSheet(
       context: context,
@@ -1730,7 +1784,16 @@ class PantallaSolicitudesYChats extends StatelessWidget {
             children: [
               CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
               const SizedBox(height: 16),
-              Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                  if (esVerificado) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.verified, color: Colors.blueAccent, size: 22),
+                  ],
+                ],
+              ),
               const SizedBox(height: 8),
               Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent)),
               const SizedBox(height: 24),
@@ -1813,10 +1876,16 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                         const Text('Solicitudes Pendientes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
                         ...pendientesUnicas.values.map((s) {
                           final emisor = perfilesMap[s['emisor_id']] ?? {};
+                          final esVerificado = emisor['verificado_biometria'] == true;
                           return Card(
                             color: Colors.grey[850],
                             child: ListTile(
-                              title: Text(emisor['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
+                              title: Row(
+                                children: [
+                                  Text(emisor['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
+                                  if (esVerificado) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.verified, color: Colors.blueAccent, size: 16)),
+                                ],
+                              ),
                               subtitle: const Text('Quiere conectar contigo'),
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -1835,6 +1904,7 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                         final otroId = s['emisor_id'] == miId ? s['receptor_id'] : s['emisor_id'];
                         final otroPerfil = perfilesMap[otroId] ?? {};
                         final fotoUrl = otroPerfil['foto_url']?.toString();
+                        final esVerificado = otroPerfil['verificado_biometria'] == true;
                         
                         final mensajesSinLeer = mensajesTotales.where((m) => m['receptor_id'] == miId && m['emisor_id'] == otroId && (m['leido'] == null || m['leido'] == false)).length;
 
@@ -1862,7 +1932,12 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                             ),
                             title: GestureDetector(
                                onTap: () => _mostrarPerfilRapidoLectura(context, otroPerfil),
-                               child: Text(otroPerfil['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                               child: Row(
+                                 children: [
+                                   Text(otroPerfil['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                   if (esVerificado) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.verified, color: Colors.blueAccent, size: 16)),
+                                 ],
+                               ),
                             ),
                             subtitle: const Text('Toca aquí para abrir el chat'),
                             trailing: IconButton(
