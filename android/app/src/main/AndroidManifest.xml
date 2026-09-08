@@ -1,6 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Agrega esta línea: -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+    
+    <application
+        android:label="scango"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+        <!-- ... resto del código ... -->
     <application
         android:label="scango"
         android:name="${applicationName}"

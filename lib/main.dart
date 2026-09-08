@@ -78,7 +78,7 @@ class _ScanGoAppState extends State<ScanGoApp> with WidgetsBindingObserver {
         return;
       }
 
-      // Sintaxis simplificada universal (evita el error 'options')
+      // Sintaxis simplificada universal
       final exitoso = await _auth.authenticate(
         localizedReason: 'Desbloquea ScanGo para continuar',
       );
@@ -584,11 +584,9 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
       if (usuarioNuevo == null) throw Exception('Error al generar sesión');
 
       final fileName = '${usuarioNuevo.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      if (!kIsWeb) {
-        await supabase.storage.from('fotos-perfil').upload(fileName, File(_fotoPerfil!.path));
-      } else {
-        await supabase.storage.from('fotos-perfil').uploadBinary(fileName, await _fotoPerfil!.readAsBytes());
-      }
+      final fileBytes = await _fotoPerfil!.readAsBytes();
+      
+      await supabase.storage.from('fotos-perfil').uploadBinary(fileName, fileBytes);
       final fotoUrl = supabase.storage.from('fotos-perfil').getPublicUrl(fileName);
 
       await supabase.from('perfiles').upsert({
@@ -767,11 +765,9 @@ class _PantallaMuroState extends State<PantallaMuro> {
               try {
                 if (mediaFile != null) {
                   final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}.${mediaTipo == 'vid' ? 'mp4' : 'jpg'}';
-                  if (!kIsWeb) {
-                    await Supabase.instance.client.storage.from('chat-media').upload(fileName, File(mediaFile!.path));
-                  } else {
-                    await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, await mediaFile!.readAsBytes());
-                  }
+                  final fileBytes = await mediaFile!.readAsBytes();
+                  
+                  await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, fileBytes);
                   urlFinal = Supabase.instance.client.storage.from('chat-media').getPublicUrl(fileName);
                 }
 
