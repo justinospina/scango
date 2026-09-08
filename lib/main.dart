@@ -135,8 +135,9 @@ class _ScanGoAppState extends State<ScanGoApp> with WidgetsBindingObserver {
     return MaterialApp(
       title: 'ScanGo',
       theme: ThemeData.dark(),
+      // El Muro Público es ahora el Index principal si no hay sesión
       home: Supabase.instance.client.auth.currentSession == null
-          ? const PantallaLogin()
+          ? const PantallaMuro(esInvitado: true)
           : (_autenticado 
               ? const PantallaPrincipal() 
               : PantallaBloqueo(onReintentar: _solicitarBiometria)),
@@ -360,7 +361,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
 
     final List<Widget> pantallas = [
       PantallaRadar(miLatitud: _miLatitud, miLongitud: _miLongitud),
-      const PantallaMuro(),
+      const PantallaMuro(esInvitado: false),
       const PantallaSolicitudesYChats(),
       const PantallaMiPerfil(),
     ];
@@ -369,7 +370,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
       switch (_indiceActual) {
         case 0: return 'Radar';
         case 1: return 'Muro de Exploradores';
-        case 2: return 'Chats';
+        case 2: return 'Solicitudes y Chats';
         case 3: return 'Mi Perfil';
         default: return 'ScanGo';
       }
@@ -402,7 +403,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
               await Supabase.instance.client.auth.signOut();
               if (!kIsWeb) FlutterAppBadger.removeBadge();
               if (context.mounted) {
-                Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PantallaLogin()), (route) => false);
+                Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PantallaMuro(esInvitado: true)), (route) => false);
               }
             },
           )
@@ -501,7 +502,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
 
     try {
       await Supabase.instance.client.auth.signInWithPassword(email: emailLimpio, password: passwordLimpio);
-      if (mounted) Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const PantallaPrincipal()));
+      if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PantallaPrincipal()), (route) => false);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credenciales incorrectas'), backgroundColor: Colors.red));
     } finally {
@@ -531,9 +532,18 @@ class _PantallaLoginState extends State<PantallaLogin> {
                     ? const CircularProgressIndicator()
                     : Column(
                         children: [
-                          ElevatedButton.icon(onPressed: iniciarSesion, icon: const Icon(Icons.login), label: const Text('Iniciar Sesión'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50))),
+                          ElevatedButton.icon(
+                            onPressed: iniciarSesion,
+                            icon: const Icon(Icons.login),
+                            label: const Text('Iniciar Sesión'),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
+                          ),
                           const SizedBox(height: 10),
-                          TextButton(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PantallaRegistro())), style: TextButton.styleFrom(foregroundColor: Colors.greenAccent), child: const Text('Crear cuenta nueva'))
+                          TextButton(
+                            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PantallaRegistro())),
+                            style: TextButton.styleFrom(foregroundColor: Colors.greenAccent),
+                            child: const Text('Crear cuenta nueva'),
+                          ),
                         ],
                       )
               ],
@@ -665,7 +675,12 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                 TextField(controller: _nombreController, decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder())),
                 const SizedBox(height: 25),
                 if (_fotoPerfil == null)
-                  ElevatedButton.icon(onPressed: procesarFoto, icon: const Icon(Icons.camera_alt), label: const Text('Tomar Foto para Análisis IA'), style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800], foregroundColor: Colors.white))
+                  ElevatedButton.icon(
+                    onPressed: procesarFoto,
+                    icon: const Icon(Icons.camera_alt),
+                    label: const Text('Tomar Foto para Análisis IA'),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800], foregroundColor: Colors.white),
+                  )
                 else ...[
                   const Icon(Icons.check_circle, color: Colors.green, size: 50),
                   const SizedBox(height: 10),
@@ -721,7 +736,8 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
 }
 
 class PantallaMuro extends StatefulWidget {
-  const PantallaMuro({super.key});
+  final bool esInvitado;
+  const PantallaMuro({super.key, this.esInvitado = false});
 
   @override
   State<PantallaMuro> createState() => _PantallaMuroState();
@@ -971,170 +987,190 @@ class _PantallaMuroState extends State<PantallaMuro> {
     final streamPublicaciones = Supabase.instance.client.from('publicaciones').stream(primaryKey: ['id']).order('created_at', ascending: false);
 
     return Scaffold(
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            color: Colors.grey[850],
-            child: Column(
-              children: [
-                DropdownButtonFormField<String>(
-                  decoration: InputDecoration(labelText: 'Filtrar Categoría', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), isDense: true),
-                  value: _filtroCategoria,
-                  items: ['Todas', ...ColombiaData.categorias].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                  onChanged: (val) => setState(() => _filtroCategoria = val == 'Todas' ? null : val),
-                ),
-                const SizedBox(height: 10),
-                Row(
+      appBar: widget.esInvitado 
+          ? AppBar(
+              title: const Text('ScanGo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24)), 
+              backgroundColor: Colors.grey[900],
+              actions: [
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PantallaLogin())),
+                  icon: const Icon(Icons.login, color: Colors.greenAccent),
+                  label: const Text('Ingresar', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                )
+              ],
+            ) 
+          : null,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 700),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                color: Colors.grey[850],
+                child: Column(
                   children: [
-                    Expanded(
-                      child: _construirBuscadorDinamico(
-                        label: 'Filtrar Depto',
-                        opciones: ColombiaData.ubicaciones.keys,
-                        onSelected: (val) => setState(() { _filtroDepartamento = val; _filtroCiudad = null; }),
-                        onCleared: () => setState(() { _filtroDepartamento = null; _filtroCiudad = null; }),
-                      ),
+                    DropdownButtonFormField<String>(
+                      decoration: InputDecoration(labelText: 'Filtrar Categoría', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), isDense: true),
+                      value: _filtroCategoria,
+                      items: ['Todas', ...ColombiaData.categorias].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                      onChanged: (val) => setState(() => _filtroCategoria = val == 'Todas' ? null : val),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _construirBuscadorDinamico(
-                        label: 'Filtrar Ciudad',
-                        opciones: _filtroDepartamento == null ? [] : ColombiaData.ubicaciones[_filtroDepartamento]!,
-                        onSelected: (val) => setState(() => _filtroCiudad = val),
-                        onCleared: () => setState(() => _filtroCiudad = null),
-                      ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _construirBuscadorDinamico(
+                            label: 'Filtrar Depto',
+                            opciones: ColombiaData.ubicaciones.keys,
+                            onSelected: (val) => setState(() { _filtroDepartamento = val; _filtroCiudad = null; }),
+                            onCleared: () => setState(() { _filtroDepartamento = null; _filtroCiudad = null; }),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _construirBuscadorDinamico(
+                            label: 'Filtrar Ciudad',
+                            opciones: _filtroDepartamento == null ? [] : ColombiaData.ubicaciones[_filtroDepartamento]!,
+                            onSelected: (val) => setState(() => _filtroCiudad = val),
+                            onCleared: () => setState(() => _filtroCiudad = null),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          
-          Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: streamPublicaciones,
-              builder: (context, snapshotPubs) {
-                if (snapshotPubs.hasError) return Center(child: Text('Error cargando Muro:\n${snapshotPubs.error}', style: const TextStyle(color: Colors.redAccent), textAlign: TextAlign.center));
-                if (!snapshotPubs.hasData) return const Center(child: CircularProgressIndicator());
-                
-                final publicaciones = snapshotPubs.data!.where((pub) {
-                  final coincidenciaCat = _filtroCategoria == null || pub['categoria'] == _filtroCategoria;
-                  final coincidenciaDep = _filtroDepartamento == null || pub['departamento'] == _filtroDepartamento;
-                  final coincidenciaCiu = _filtroCiudad == null || pub['ciudad'] == _filtroCiudad;
-                  return coincidenciaCat && coincidenciaDep && coincidenciaCiu;
-                }).toList();
+              ),
+              
+              Expanded(
+                child: StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: streamPublicaciones,
+                  builder: (context, snapshotPubs) {
+                    if (snapshotPubs.hasError) return Center(child: Text('Error cargando Muro:\n${snapshotPubs.error}', style: const TextStyle(color: Colors.redAccent), textAlign: TextAlign.center));
+                    if (!snapshotPubs.hasData) return const Center(child: CircularProgressIndicator());
+                    
+                    final publicaciones = snapshotPubs.data!.where((pub) {
+                      final coincidenciaCat = _filtroCategoria == null || pub['categoria'] == _filtroCategoria;
+                      final coincidenciaDep = _filtroDepartamento == null || pub['departamento'] == _filtroDepartamento;
+                      final coincidenciaCiu = _filtroCiudad == null || pub['ciudad'] == _filtroCiudad;
+                      return coincidenciaCat && coincidenciaDep && coincidenciaCiu;
+                    }).toList();
 
-                if (publicaciones.isEmpty) return const Center(child: Text('No hay publicaciones con estos filtros.', style: TextStyle(color: Colors.grey)));
+                    if (publicaciones.isEmpty) return const Center(child: Text('No hay publicaciones con estos filtros.', style: TextStyle(color: Colors.grey)));
 
-                return FutureBuilder<List<Map<String, dynamic>>>(
-                  future: Supabase.instance.client.from('perfiles').select(),
-                  builder: (context, snapshotPerfiles) {
-                    if (snapshotPerfiles.hasError) return Center(child: Text('Error cargando Perfiles:\n${snapshotPerfiles.error}', style: const TextStyle(color: Colors.redAccent), textAlign: TextAlign.center));
-                    if (!snapshotPerfiles.hasData) return const Center(child: CircularProgressIndicator());
-                    final perfilesMap = {for (var p in snapshotPerfiles.data!) p['id']: p};
+                    return FutureBuilder<List<Map<String, dynamic>>>(
+                      future: Supabase.instance.client.from('perfiles').select(),
+                      builder: (context, snapshotPerfiles) {
+                        if (snapshotPerfiles.hasError) return Center(child: Text('Error cargando Perfiles:\n${snapshotPerfiles.error}', style: const TextStyle(color: Colors.redAccent), textAlign: TextAlign.center));
+                        if (!snapshotPerfiles.hasData) return const Center(child: CircularProgressIndicator());
+                        final perfilesMap = {for (var p in snapshotPerfiles.data!) p['id']: p};
 
-                    return ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: publicaciones.length,
-                      itemBuilder: (context, index) {
-                        final pub = publicaciones[index];
-                        final autor = perfilesMap[pub['usuario_id']] ?? {};
-                        final fotoAutor = autor['foto_url']?.toString();
-                        final tieneFotoAutor = fotoAutor != null && fotoAutor.trim().isNotEmpty;
-                        
-                        DateTime fecha = DateTime.now();
-                        if (pub['created_at'] != null) {
-                          fecha = DateTime.tryParse(pub['created_at'].toString())?.toLocal() ?? DateTime.now();
-                        }
-                        final fechaStr = '${fecha.day}/${fecha.month} ${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
-                        
-                        final whatsapp = pub['whatsapp']?.toString();
-                        final esMio = pub['usuario_id'] == miId;
+                        return ListView.builder(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: publicaciones.length,
+                          itemBuilder: (context, index) {
+                            final pub = publicaciones[index];
+                            final autor = perfilesMap[pub['usuario_id']] ?? {};
+                            final fotoAutor = autor['foto_url']?.toString();
+                            final tieneFotoAutor = fotoAutor != null && fotoAutor.trim().isNotEmpty;
+                            
+                            DateTime fecha = DateTime.now();
+                            if (pub['created_at'] != null) {
+                              fecha = DateTime.tryParse(pub['created_at'].toString())?.toLocal() ?? DateTime.now();
+                            }
+                            final fechaStr = '${fecha.day}/${fecha.month} ${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
+                            
+                            final whatsapp = pub['whatsapp']?.toString();
+                            final esMio = !widget.esInvitado && miId != null && pub['usuario_id'] == miId;
 
-                        return Card(
-                          color: Colors.grey[900],
-                          margin: const EdgeInsets.only(bottom: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
+                            return Card(
+                              color: Colors.grey[900],
+                              margin: const EdgeInsets.only(bottom: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    CircleAvatar(backgroundImage: tieneFotoAutor ? NetworkImage(fotoAutor) : null, child: !tieneFotoAutor ? const Icon(Icons.person) : null),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(autor['nombre'] ?? 'Usuario', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
-                                          Text('${pub['ciudad'] ?? 'Sin Ciudad'}, ${pub['departamento'] ?? ''} • ${pub['categoria'] ?? ''}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
-                                          Text(fechaStr, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                        ],
-                                      ),
+                                    Row(
+                                      children: [
+                                        CircleAvatar(backgroundImage: tieneFotoAutor ? NetworkImage(fotoAutor) : null, child: !tieneFotoAutor ? const Icon(Icons.person) : null),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(autor['nombre'] ?? 'Usuario', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+                                              Text('${pub['ciudad'] ?? 'Sin Ciudad'}, ${pub['departamento'] ?? ''} • ${pub['categoria'] ?? ''}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
+                                              Text(fechaStr, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                            ],
+                                          ),
+                                        ),
+                                        if (esMio)
+                                          IconButton(
+                                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                            onPressed: () => _eliminarPublicacion(pub['id'].toString()),
+                                          ),
+                                      ],
                                     ),
-                                    if (esMio)
-                                      IconButton(
-                                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                                        onPressed: () => _eliminarPublicacion(pub['id'].toString()),
+                                    const SizedBox(height: 12),
+                                    if (pub['texto'] != null && pub['texto'].toString().isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 12),
+                                        child: Text(pub['texto'], style: const TextStyle(fontSize: 15)),
+                                      ),
+                                    if (pub['media_url'] != null)
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: pub['tipo'] == 'vid'
+                                            ? ReproductorVideoWidget(url: pub['media_url'])
+                                            : Image.network(pub['media_url'], width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50, color: Colors.grey)),
+                                      ),
+                                    if (whatsapp != null && whatsapp.trim().isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 16),
+                                        child: ElevatedButton.icon(
+                                          onPressed: () async {
+                                            final numeroLimpio = whatsapp.replaceAll(RegExp(r'[^0-9]'), '');
+                                            final url = Uri.parse('https://wa.me/$numeroLimpio');
+                                            if (await canLaunchUrl(url)) {
+                                              await launchUrl(url, mode: LaunchMode.externalApplication);
+                                            } else {
+                                              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir WhatsApp')));
+                                            }
+                                          },
+                                          icon: const Icon(Icons.chat, color: Colors.white),
+                                          label: const Text('Contactar por WhatsApp', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFF25D366),
+                                            foregroundColor: Colors.white,
+                                            minimumSize: const Size(double.infinity, 45),
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                                          ),
+                                        ),
                                       ),
                                   ],
                                 ),
-                                const SizedBox(height: 12),
-                                if (pub['texto'] != null && pub['texto'].toString().isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: Text(pub['texto'], style: const TextStyle(fontSize: 15)),
-                                  ),
-                                if (pub['media_url'] != null)
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: pub['tipo'] == 'vid'
-                                        ? ReproductorVideoWidget(url: pub['media_url'])
-                                        : Image.network(pub['media_url'], width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50, color: Colors.grey)),
-                                  ),
-                                if (whatsapp != null && whatsapp.trim().isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 16),
-                                    child: ElevatedButton.icon(
-                                      onPressed: () async {
-                                        final numeroLimpio = whatsapp.replaceAll(RegExp(r'[^0-9]'), '');
-                                        final url = Uri.parse('https://wa.me/$numeroLimpio');
-                                        if (await canLaunchUrl(url)) {
-                                          await launchUrl(url, mode: LaunchMode.externalApplication);
-                                        } else {
-                                          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir WhatsApp')));
-                                        }
-                                      },
-                                      icon: const Icon(Icons.chat, color: Colors.white),
-                                      label: const Text('Contactar por WhatsApp', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF25D366),
-                                        foregroundColor: Colors.white,
-                                        minimumSize: const Size(double.infinity, 45),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
+                              ),
+                            );
+                          },
                         );
                       },
                     );
                   },
-                );
-              },
-            ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _abrirCrearPublicacion,
-        backgroundColor: Colors.greenAccent,
-        child: const Icon(Icons.add, color: Colors.black),
-      ),
+      floatingActionButton: widget.esInvitado 
+          ? null 
+          : FloatingActionButton(
+              onPressed: _abrirCrearPublicacion,
+              backgroundColor: Colors.greenAccent,
+              child: const Icon(Icons.add, color: Colors.black),
+            ),
     );
   }
 }
