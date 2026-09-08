@@ -10,6 +10,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:local_auth/local_auth.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,8 +21,77 @@ Future<void> main() async {
   runApp(const ScanGoApp());
 }
 
-class ScanGoApp extends StatelessWidget {
+class ScanGoApp extends StatefulWidget {
   const ScanGoApp({super.key});
+
+  @override
+  State<ScanGoApp> createState() => _ScanGoAppState();
+}
+
+class _ScanGoAppState extends State<ScanGoApp> with WidgetsBindingObserver {
+  bool _autenticado = false;
+  bool _autenticando = false;
+  final LocalAuthentication _auth = LocalAuthentication();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _solicitarBiometria();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused && !_autenticando) {
+      if (Supabase.instance.client.auth.currentSession != null) {
+        setState(() => _autenticado = false);
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      if (!_autenticado && !_autenticando && Supabase.instance.client.auth.currentSession != null) {
+        _solicitarBiometria();
+      }
+    }
+  }
+
+  Future<void> _solicitarBiometria() async {
+    if (Supabase.instance.client.auth.currentSession == null) return;
+    if (_autenticando) return;
+
+    // Salto de seguridad: Los navegadores web no tienen lector de huellas nativo.
+    if (kIsWeb) {
+      setState(() => _autenticado = true);
+      return;
+    }
+
+    setState(() => _autenticando = true);
+    
+    try {
+      final soportaBiometria = await _auth.canCheckBiometrics || await _auth.isDeviceSupported();
+      if (!soportaBiometria) {
+        setState(() => _autenticado = true); 
+        return;
+      }
+
+      // Sintaxis simplificada universal (evita el error 'options')
+      final exitoso = await _auth.authenticate(
+        localizedReason: 'Desbloquea ScanGo para continuar',
+      );
+
+      if (mounted) setState(() => _autenticado = exitoso);
+    } catch (e) {
+      debugPrint("Error biometría: $e");
+      // Si el simulador falla, permitimos el acceso para no bloquear el desarrollo
+      if (mounted) setState(() => _autenticado = true);
+    } finally {
+      if (mounted) setState(() => _autenticando = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +100,43 @@ class ScanGoApp extends StatelessWidget {
       theme: ThemeData.dark(),
       home: Supabase.instance.client.auth.currentSession == null
           ? const PantallaLogin()
-          : const PantallaPrincipal(),
+          : (_autenticado 
+              ? const PantallaPrincipal() 
+              : PantallaBloqueo(onReintentar: _solicitarBiometria)),
+    );
+  }
+}
+
+class PantallaBloqueo extends StatelessWidget {
+  final VoidCallback onReintentar;
+  const PantallaBloqueo({super.key, required this.onReintentar});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.lock_outline, size: 80, color: Colors.greenAccent),
+            const SizedBox(height: 20),
+            const Text('ScanGo Bloqueado', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            const Text('Verifica tu identidad para acceder.', style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 30),
+            ElevatedButton.icon(
+              onPressed: onReintentar,
+              icon: const Icon(Icons.fingerprint),
+              label: const Text('Desbloquear'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.greenAccent, 
+                foregroundColor: Colors.black,
+                minimumSize: const Size(200, 50),
+              ),
+            )
+          ],
+        ),
+      ),
     );
   }
 }
@@ -579,7 +685,6 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   }
 }
 
-// ==================== PANTALLA MURO (FEED) ====================
 class PantallaMuro extends StatefulWidget {
   const PantallaMuro({super.key});
 
@@ -1632,13 +1737,9 @@ class _PantallaChatState extends State<PantallaChat> {
       
       final miId = Supabase.instance.client.auth.currentUser!.id;
       final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}.${tipo == 'video' ? 'mp4' : 'jpg'}';
+      final fileBytes = await archivo.readAsBytes();
       
-      if (!kIsWeb) {
-        await Supabase.instance.client.storage.from('chat-media').upload(fileName, File(archivo.path));
-      } else {
-        await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, await archivo.readAsBytes());
-      }
-      
+      await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, fileBytes);
       final url = Supabase.instance.client.storage.from('chat-media').getPublicUrl(fileName);
       
       final prefijo = tipo == 'video' ? '[VID]' : '[IMG]';
