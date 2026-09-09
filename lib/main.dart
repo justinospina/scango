@@ -41,7 +41,6 @@ class ColombiaData {
   };
 }
 
-// Widget auxiliar para renderizar Categorías con Título Grande y Descripción Pequeña
 Widget _construirTextoCategoria(String textoCompleto) {
   final partes = textoCompleto.split(':');
   if (partes.length > 1) {
@@ -1359,6 +1358,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
   bool _esPrimeraCargaSolicitudes = true; 
   
   RangeValues _rangoEdad = const RangeValues(18, 99);
+  double _distanciaMaximaKm = 15.0; // Rango de distancia en km
 
   @override
   void initState() {
@@ -1384,7 +1384,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
 
             if (widget.miLatitud != null && widget.miLongitud != null && nuevoPerfil['latitud'] != null && nuevoPerfil['longitud'] != null) {
               final distMetros = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, (nuevoPerfil['latitud'] as num).toDouble(), (nuevoPerfil['longitud'] as num).toDouble());
-              if (distMetros <= 5000) {
+              if (distMetros <= _distanciaMaximaKm * 1000) {
                 final perfilId = nuevoPerfil['id'].toString();
                 if (!_exploradoresCercanosNotificados.contains(perfilId)) {
                   _exploradoresCercanosNotificados.add(perfilId);
@@ -1554,7 +1554,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
                         onPressed: () {
                           Navigator.pop(context);
-                          // En la alerta no tenemos el ID de la solicitud fácilmente, pasaremos un fallback o puedes ignorar el botón match aquí.
                           Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: receptor['id'], receptorNombre: receptor['nombre'] ?? 'Explorador', receptorFoto: fotoUrl, solicitudId: '')));
                         },
                         icon: const Icon(Icons.chat),
@@ -1696,6 +1695,17 @@ class _PantallaRadarState extends State<PantallaRadar> {
                   setState(() => _rangoEdad = values);
                 },
               ),
+              const SizedBox(height: 5),
+              Text('Distancia máxima: ${_distanciaMaximaKm.round()} km', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              Slider(
+                value: _distanciaMaximaKm,
+                min: 1,
+                max: 100,
+                divisions: 99,
+                activeColor: Colors.greenAccent,
+                label: '${_distanciaMaximaKm.round()} km',
+                onChanged: (val) => setState(() => _distanciaMaximaKm = val),
+              ),
             ],
           ),
         ),
@@ -1724,6 +1734,15 @@ class _PantallaRadarState extends State<PantallaRadar> {
                     final int edadOtro = p['edad'] ?? 18;
                     if (edadOtro < _rangoEdad.start.round() || edadOtro > _rangoEdad.end.round()) return false;
 
+                    // Filtro Dinámico de Distancia (Sólo si ambos tienen GPS)
+                    if (widget.miLatitud != null && widget.miLongitud != null && p['latitud'] != null && p['longitud'] != null) {
+                      final distMetros = Geolocator.distanceBetween(
+                        widget.miLatitud!, widget.miLongitud!, 
+                        (p['latitud'] as num).toDouble(), (p['longitud'] as num).toDouble()
+                      );
+                      if (distMetros > _distanciaMaximaKm * 1000) return false;
+                    }
+
                     final ultimaConexion = DateTime.parse(p['ultima_conexion']);
                     if (DateTime.now().toUtc().difference(ultimaConexion).inMinutes > 15) return false;
 
@@ -1750,7 +1769,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                     });
                   }
 
-                  if (perfiles.isEmpty) return const Center(child: Text('No hay exploradores en este rango de edad cerca.', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, color: Colors.grey)));
+                  if (perfiles.isEmpty) return const Center(child: Text('No hay exploradores en este rango cerca.', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, color: Colors.grey)));
                   
                   return ListView.builder(
                     padding: const EdgeInsets.all(16),
