@@ -15,11 +15,10 @@ import 'package:local_auth/local_auth.dart';
 // Variable global para controlar la verificación de edad en la sesión actual
 bool _mayorDeEdadConfirmado = false;
 
+// ==================== LIBRERÍA DE DATOS DE COLOMBIA ====================
 class ColombiaData {
-  static const List<String> categorias = ['General', 'Eventos', 'Negocios', 'Deportes', 'Social'];
-  
-  // Categorías de deseo actualizadas con emojis
-  static const List<String> categoriasDeseo = [
+  // Categorías unificadas para Muro y Deseos de Perfil
+  static const List<String> categorias = [
     '💘 Ligar: Interés romántico o sexual hacia otra persona sin precio.',
     '💃 Dama de Compañía: Mujer dispuesta en complacer a un hombre sexualmente, asistir a reuniones, viajes, cenas y eventos por un precio.',
     '🕺 Hombre de Compañía: Hombre dispuesto en complacer a mujeres sexualmente, asistir a reuniones, viajes, cenas y eventos por un precio.',
@@ -80,7 +79,7 @@ void _verificarEdadGlobal(BuildContext context) {
   WidgetsBinding.instance.addPostFrameCallback((_) {
     showDialog(
       context: context,
-      barrierDismissible: false, // Obliga a responder
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.grey[900],
         title: const Text('⚠️ Verificación de Edad', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
@@ -92,7 +91,6 @@ void _verificarEdadGlobal(BuildContext context) {
                 SystemNavigator.pop();
               } else {
                 Navigator.of(ctx).pop();
-                // En web cerramos forzosamente o mostramos error
                 showDialog(context: ctx, barrierDismissible: false, builder: (_) => const Scaffold(body: Center(child: Text('Acceso Denegado. Solo para mayores de 18 años.', style: TextStyle(fontSize: 20, color: Colors.red)))));
               }
             },
@@ -291,7 +289,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
     if (_yaPreguntoDeseo) return;
     _yaPreguntoDeseo = true;
 
-    String? deseoSeleccionado = ColombiaData.categoriasDeseo.first;
+    String? deseoSeleccionado = ColombiaData.categorias.first;
 
     showDialog(
       context: context,
@@ -315,7 +313,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.greenAccent), borderRadius: BorderRadius.circular(12)),
                     ),
-                    items: ColombiaData.categoriasDeseo.map((d) => DropdownMenuItem(
+                    items: ColombiaData.categorias.map((d) => DropdownMenuItem(
                       value: d, 
                       child: Text(d, style: const TextStyle(fontSize: 12), overflow: TextOverflow.visible)
                     )).toList(),
@@ -706,7 +704,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         'id': usuarioNuevo.id, 
         'nombre': nombre,
         'edad': int.parse(edad),
-        'deseo_actual': ColombiaData.categoriasDeseo.first, 
+        'deseo_actual': ColombiaData.categorias.first, 
         'genero': _generoDetectado,
         'preferencia': _preferencia,
         'foto_url': fotoUrl,
@@ -939,7 +937,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
     String? mediaTipo;
     bool procesando = false;
     
-    String categoriaSel = 'General';
+    String categoriaSel = ColombiaData.categorias.first;
     String? depSel;
     String? ciuSel;
 
@@ -1005,9 +1003,10 @@ class _PantallaMuroState extends State<PantallaMuro> {
                     const Text('Nueva Publicación', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
                     const SizedBox(height: 15),
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       value: categoriaSel,
                       decoration: InputDecoration(labelText: 'Categoría', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), isDense: true),
-                      items: ColombiaData.categorias.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                      items: ColombiaData.categorias.map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 12), overflow: TextOverflow.visible))).toList(),
                       onChanged: (val) => setStateModal(() => categoriaSel = val!),
                     ),
                     const SizedBox(height: 10),
@@ -1129,9 +1128,10 @@ class _PantallaMuroState extends State<PantallaMuro> {
                 child: Column(
                   children: [
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       decoration: InputDecoration(labelText: 'Filtrar Categoría', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), isDense: true),
                       value: _filtroCategoria,
-                      items: ['Todas', ...ColombiaData.categorias].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                      items: ['Todas', ...ColombiaData.categorias].map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 12), overflow: TextOverflow.visible))).toList(),
                       onChanged: (val) {
                         setState(() { _filtroCategoria = val == 'Todas' ? null : val; _paginaActual = 0; });
                         _cargarPublicaciones();
@@ -1228,7 +1228,9 @@ class _PantallaMuroState extends State<PantallaMuro> {
                                                         ],
                                                       ],
                                                     ),
-                                                    Text('${pub['ciudad'] ?? 'Sin Ciudad'}, ${pub['departamento'] ?? ''} • ${pub['categoria'] ?? ''}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
+                                                    Text('${pub['ciudad'] ?? 'Sin Ciudad'}, ${pub['departamento'] ?? ''}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
+                                                    if (pub['categoria'] != null)
+                                                      Text('${pub['categoria']}', style: const TextStyle(color: Colors.orangeAccent, fontSize: 11)),
                                                     Text(fechaStr, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                                   ],
                                                 ),
@@ -1853,7 +1855,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
           setState(() {
             _nombreController.text = perfil['nombre'] ?? '';
             _edadController.text = perfil['edad']?.toString() ?? '';
-            _deseoSeleccionado = perfil['deseo_actual'] ?? ColombiaData.categoriasDeseo.first;
+            _deseoSeleccionado = perfil['deseo_actual'] ?? ColombiaData.categorias.first;
             _genero = perfil['genero'] ?? 'HOMBRE';
             _preferencia = perfil['preferencia'] ?? 'AMBAS';
             _fotoUrl = perfil['foto_url'];
@@ -1966,7 +1968,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
             isExpanded: true,
             value: _deseoSeleccionado,
             decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder()),
-            items: ColombiaData.categoriasDeseo.map((label) => DropdownMenuItem(value: label, child: Text(label, style: const TextStyle(fontSize: 12), overflow: TextOverflow.visible))).toList(),
+            items: ColombiaData.categorias.map((label) => DropdownMenuItem(value: label, child: Text(label, style: const TextStyle(fontSize: 12), overflow: TextOverflow.visible))).toList(),
             onChanged: (value) => setState(() => _deseoSeleccionado = value),
           ),
           const SizedBox(height: 15),
