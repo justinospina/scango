@@ -14,7 +14,7 @@ import 'package:local_auth/local_auth.dart';
 
 // ==================== LIBRERÍA DE DATOS DE COLOMBIA ====================
 class ColombiaData {
-  static const List<String> categorias = ['General', 'Eventos', 'Negocios', 'Deportes', 'Social'];
+  static const List<String> categorias = ['Ligar', 'Contactos', 'Dama de Compañia', 'Hombre de Compañia ', 'Social'];
   static const Map<String, List<String>> ubicaciones = {
     'Amazonas': ['Leticia', 'Puerto Nariño'],
     'Antioquia': ['Medellín', 'Bello', 'Itagüí', 'Envigado', 'Apartadó', 'Rionegro', 'Turbo', 'Caucasia'],
