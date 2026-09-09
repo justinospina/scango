@@ -18,14 +18,13 @@ bool _mayorDeEdadConfirmado = false;
 class ColombiaData {
   static const List<String> categorias = ['General', 'Eventos', 'Negocios', 'Deportes', 'Social'];
   
-  // Nuevas categorías de deseo con emojis
+  // Categorías de deseo actualizadas con emojis
   static const List<String> categoriasDeseo = [
-    '💘 Ligar (interés sexual o romántico hacia otra persona sin costo)',
-    '💃 Dama de Compañía Heterosexual (Mujer dispuesta a complacer Hombres sexualmente y asistir a eventos, reuniones sociales y cenas por un precio)',
-    '🕺 Hombre de Compañía (Hombre dispuesto a complacer mujeres sexualmente y asistir a reuniones, eventos sociales y cenas por un precio)',
-    '👨‍❤️‍👨 Hombre Gay (Hombre dispuesto a complacer sexualmente a otro hombre y asistir a reuniones, eventos sociales y cenas por un precio)',
-    '👩‍❤️‍👩 Dama lesbiana (Mujer dispuesta a complacer sexualmente a otra mujer y asistir a reuniones, eventos sociales y cenas por un precio)',
-    '🏳️‍⚧️ Transgénero (Persona que ha cambiado su sexo biológico y desea complacer sexualmente a otra persona y asistir a reuniones, eventos sociales y cenas por un precio)'
+    '💘 Ligar: Interés romántico o sexual hacia otra persona sin precio.',
+    '💃 Dama de Compañía: Mujer dispuesta en complacer a un hombre sexualmente, asistir a reuniones, viajes, cenas y eventos por un precio.',
+    '🕺 Hombre de Compañía: Hombre dispuesto en complacer a mujeres sexualmente, asistir a reuniones, viajes, cenas y eventos por un precio.',
+    '👩‍❤️‍👩 Mujer Lesbiana: Mujer dispuesta a complacer mujeres sexualmente, asistir a reuniones, viajes, cenas y eventos por un precio.',
+    '👨‍❤️‍👨 Hombre Gay: Hombre dispuesto a complacer hombres sexualmente, asistir a reuniones, viajes, cenas y eventos por un precio.'
   ];
 
   static const Map<String, List<String>> ubicaciones = {
@@ -261,7 +260,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
     _cargarDisponibilidad();
     _obtenerYGuardarGPS();
     
-    _verificarEdadGlobal(context); // Verificación de edad al entrar
+    _verificarEdadGlobal(context);
     
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       _actualizarUltimaConexion();
@@ -310,7 +309,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
                   const Text('Actualiza tu estado seleccionando una categoría para que otros sepan qué buscas.', style: TextStyle(color: Colors.grey, fontSize: 13)),
                   const SizedBox(height: 20),
                   DropdownButtonFormField<String>(
-                    isExpanded: true, // Evita desbordamiento de texto largo
+                    isExpanded: true,
                     value: deseoSeleccionado,
                     decoration: InputDecoration(
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -707,7 +706,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         'id': usuarioNuevo.id, 
         'nombre': nombre,
         'edad': int.parse(edad),
-        'deseo_actual': ColombiaData.categoriasDeseo.first, // Se inicializa con la primera categoría
+        'deseo_actual': ColombiaData.categoriasDeseo.first, 
         'genero': _generoDetectado,
         'preferencia': _preferencia,
         'foto_url': fotoUrl,
@@ -1292,6 +1291,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
                                 },
                               ),
                             ),
+                            // CONTROLES DE PAGINACIÓN
                             Container(
                               padding: const EdgeInsets.all(12),
                               color: Colors.grey[900],
@@ -1356,7 +1356,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
   bool _dialogoMultiplesAbierto = false;
   bool _esPrimeraCargaSolicitudes = true; 
   
-  // NUEVO: Filtro de Edad en el Radar
   RangeValues _rangoEdad = const RangeValues(18, 99);
 
   @override
@@ -1677,7 +1676,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
 
     return Column(
       children: [
-        // Rango de Edad Visual en Radar
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           color: Colors.grey[850],
@@ -1720,7 +1718,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
                     
                     if (p['disponible'] == false) return false;
 
-                    // Filtro Rango de Edad
                     final int edadOtro = p['edad'] ?? 18;
                     if (edadOtro < _rangoEdad.start.round() || edadOtro > _rangoEdad.end.round()) return false;
 
@@ -2234,13 +2231,9 @@ class _PantallaChatState extends State<PantallaChat> {
       
       final miId = Supabase.instance.client.auth.currentUser!.id;
       final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}.${tipo == 'video' ? 'mp4' : 'jpg'}';
+      final fileBytes = await archivo.readAsBytes();
       
-      if (!kIsWeb) {
-        await Supabase.instance.client.storage.from('chat-media').upload(fileName, File(archivo.path));
-      } else {
-        await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, await archivo.readAsBytes());
-      }
-      
+      await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, fileBytes);
       final url = Supabase.instance.client.storage.from('chat-media').getPublicUrl(fileName);
       
       final prefijo = tipo == 'video' ? '[VID]' : '[IMG]';

@@ -100459,54 +100459,53 @@ p.f.iv(0,new A.nO("sonidos/envio.mp3",null)).fT(new A.aAD())
 case 1:return A.p(q,r)}})
 return A.q($async$xn,r)},
 l_(a,b){return this.aqi(a,b)},
-aqi(a3,a4){var s=0,r=A.r(t.H),q,p=2,o=[],n=[],m=this,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2
-var $async$l_=A.n(function(a5,a6){if(a5===1){o.push(a6)
+aqi(a2,a3){var s=0,r=A.r(t.H),q,p=2,o=[],n=[],m=this,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1
+var $async$l_=A.n(function(a4,a5){if(a4===1){o.push(a5)
 s=p}for(;;)switch(s){case 0:p=4
-f=a4==="video"
-e=m.r
-s=f?7:9
+e=a3==="video"
+d=m.r
+s=e?7:9
 break
 case 7:s=10
-return A.m(e.a2o(a3),$async$l_)
+return A.m(d.a2o(a2),$async$l_)
 case 10:s=8
 break
 case 9:s=11
-return A.m(e.Fb(70,a3),$async$l_)
-case 11:case 8:l=a6
+return A.m(d.Fb(70,a2),$async$l_)
+case 11:case 8:l=a5
 if(l==null){n=[1]
 s=5
 break}m.X(new A.aAs(m))
-e=$.bJ()
-d=e.b
-d===$&&A.a()
-d=d.gcD().e.a
-k=(d==null?null:d.r).a
-d=A.k(k)
-c=Date.now()
-b=f?"mp4":"jpg"
-j=d+"_"+c+"."+b
-b=e.b.ay
-b===$&&A.a()
-a1=b.bY("chat-media")
-a2=j
-s=13
+d=$.bJ()
+c=d.b
+c===$&&A.a()
+c=c.gcD().e.a
+k=(c==null?null:c.r).a
+c=A.k(k)
+b=Date.now()
+a=e?"mp4":"jpg"
+j=c+"_"+b+"."+a
+s=12
 return A.m(l.ug(),$async$l_)
-case 13:s=12
-return A.m(a1.qJ(a2,a6),$async$l_)
-case 12:e=e.b.ay
-e===$&&A.a()
-i=e.bY("chat-media").zd(j)
-h=f?"[VID]":"[IMG]"
+case 12:i=a5
+a=d.b.ay
+a===$&&A.a()
+s=13
+return A.m(a.bY("chat-media").qJ(j,i),$async$l_)
+case 13:d=d.b.ay
+d===$&&A.a()
+h=d.bY("chat-media").zd(j)
+g=e?"[VID]":"[IMG]"
 s=14
-return A.m(m.xn(A.k(h)+A.k(i)),$async$l_)
+return A.m(m.xn(A.k(g)+A.k(h)),$async$l_)
 case 14:n.push(6)
 s=5
 break
 case 4:p=3
-a0=o.pop()
-g=A.Y(a0)
-f=m.c
-if(f!=null)f.a6(t.J).f.ee(A.lr(null,null,null,B.br,null,B.n,null,A.br("Error al enviar: "+A.k(g),null,null,null,null,null,null),null,B.au,null,null,null,null,null,null,null,null,null,null))
+a1=o.pop()
+f=A.Y(a1)
+e=m.c
+if(e!=null)e.a6(t.J).f.ee(A.lr(null,null,null,B.br,null,B.n,null,A.br("Error al enviar: "+A.k(f),null,null,null,null,null,null),null,B.au,null,null,null,null,null,null,null,null,null,null))
 n.push(6)
 s=5
 break
@@ -107740,6 +107739,7 @@ B.Fl=new A.bB(0,B.V,B.HE,B.d0,8)
 B.IR=new A.H(0.058823529411764705,0,0,0,B.e)
 B.Fu=new A.bB(0,B.V,B.IR,B.d0,1)
 B.Pr=s([B.Fl,B.Fu],t.F)
+B.fx=s(["\ud83d\udc98 Ligar: Inter\xe9s rom\xe1ntico o sexual hacia otra persona sin precio.","\ud83d\udc83 Dama de Compa\xf1\xeda: Mujer dispuesta en complacer a un hombre sexualmente, asistir a reuniones, viajes, cenas y eventos por un precio.","\ud83d\udd7a Hombre de Compa\xf1\xeda: Hombre dispuesto en complacer a mujeres sexualmente, asistir a reuniones, viajes, cenas y eventos por un precio.","\ud83d\udc69\u200d\u2764\ufe0f\u200d\ud83d\udc69 Mujer Lesbiana: Mujer dispuesta a complacer mujeres sexualmente, asistir a reuniones, viajes, cenas y eventos por un precio.","\ud83d\udc68\u200d\u2764\ufe0f\u200d\ud83d\udc68 Hombre Gay: Hombre dispuesto a complacer hombres sexualmente, asistir a reuniones, viajes, cenas y eventos por un precio."],t.s)
 B.Bn=new A.d7(0,"abstime")
 B.Bo=new A.d7(1,"bool")
 B.Bz=new A.d7(2,"date")
@@ -107770,7 +107770,6 @@ B.KD=new A.jP(1,"phone")
 B.KE=new A.jP(2,"webauthn")
 B.Pu=s([B.KC,B.KD,B.KE,B.q6],A.aE("I<jP>"))
 B.Pv=s(["pointerdown","pointermove","pointerleave","pointerup","pointercancel","touchstart","touchend","touchmove","touchcancel","mousedown","mousemove","mouseleave","mouseup","wheel"],t.s)
-B.fx=s(["\ud83d\udc98 Ligar (inter\xe9s sexual o rom\xe1ntico hacia otra persona sin costo)","\ud83d\udc83 Dama de Compa\xf1\xeda Heterosexual (Mujer dispuesta a complacer Hombres sexualmente y asistir a eventos, reuniones sociales y cenas por un precio)","\ud83d\udd7a Hombre de Compa\xf1\xeda (Hombre dispuesto a complacer mujeres sexualmente y asistir a reuniones, eventos sociales y cenas por un precio)","\ud83d\udc68\u200d\u2764\ufe0f\u200d\ud83d\udc68 Hombre Gay (Hombre dispuesto a complacer sexualmente a otro hombre y asistir a reuniones, eventos sociales y cenas por un precio)","\ud83d\udc69\u200d\u2764\ufe0f\u200d\ud83d\udc69 Dama lesbiana (Mujer dispuesta a complacer sexualmente a otra mujer y asistir a reuniones, eventos sociales y cenas por un precio)","\ud83c\udff3\ufe0f\u200d\u26a7\ufe0f Transg\xe9nero (Persona que ha cambiado su sexo biol\xf3gico y desea complacer sexualmente a otra persona y asistir a reuniones, eventos sociales y cenas por un precio)"],t.s)
 B.r4=new A.aeZ(3,"high")
 B.fy=new A.oL(0,"denied")
 B.ik=new A.oL(1,"deniedForever")
