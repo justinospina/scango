@@ -12,9 +12,22 @@ import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:local_auth/local_auth.dart';
 
-// ==================== LIBRERÍA DE DATOS DE COLOMBIA ====================
+// Variable global para controlar la verificación de edad en la sesión actual
+bool _mayorDeEdadConfirmado = false;
+
 class ColombiaData {
-  static const List<String> categorias = ['Ligar ( interés  sexual o romantico hacia otra persona sin costo )', 'Dama de Compañia Heterosexual(Mujer dispuesta a complacer Hombres sexualemente y asistir a eventos, reuniones sociales y cenas por un precio)', 'Hombre de Compañia (Hombre  dispuesta a complacer mujeres  sexualemente y asistir a reuniones, eventos sociales y cenas por un precio', 'Hombre Gay (Hombre dispuesto a complacer sexualemnete a otro hombre y asistir a reuniones, eventos sociales y cenas por un precio)', 'Dama lestiana (Mujer dispuesta a complacer sexualmente a otra mujer y asistir a reuniones, eventos sociales y cenas por un precio)', 'Transgenero (Persona que ha cambiado su sexo biologico y desea complacer sexualmente a otra persona y asistir a reuniones, eventos sociales y cenas por un precio)'];
+  static const List<String> categorias = ['General', 'Eventos', 'Negocios', 'Deportes', 'Social'];
+  
+  // Nuevas categorías de deseo con emojis
+  static const List<String> categoriasDeseo = [
+    '💘 Ligar (interés sexual o romántico hacia otra persona sin costo)',
+    '💃 Dama de Compañía Heterosexual (Mujer dispuesta a complacer Hombres sexualmente y asistir a eventos, reuniones sociales y cenas por un precio)',
+    '🕺 Hombre de Compañía (Hombre dispuesto a complacer mujeres sexualmente y asistir a reuniones, eventos sociales y cenas por un precio)',
+    '👨‍❤️‍👨 Hombre Gay (Hombre dispuesto a complacer sexualmente a otro hombre y asistir a reuniones, eventos sociales y cenas por un precio)',
+    '👩‍❤️‍👩 Dama lesbiana (Mujer dispuesta a complacer sexualmente a otra mujer y asistir a reuniones, eventos sociales y cenas por un precio)',
+    '🏳️‍⚧️ Transgénero (Persona que ha cambiado su sexo biológico y desea complacer sexualmente a otra persona y asistir a reuniones, eventos sociales y cenas por un precio)'
+  ];
+
   static const Map<String, List<String>> ubicaciones = {
     'Amazonas': ['Leticia', 'Puerto Nariño'],
     'Antioquia': ['Medellín', 'Bello', 'Itagüí', 'Envigado', 'Apartadó', 'Rionegro', 'Turbo', 'Caucasia'],
@@ -59,6 +72,45 @@ Future<void> main() async {
     anonKey: 'sb_publishable_iVJD8SvV1jtbM-hMVGAsGQ_XTT60Cdk', 
   );
   runApp(const ScanGoApp());
+}
+
+// Función global para verificar edad
+void _verificarEdadGlobal(BuildContext context) {
+  if (_mayorDeEdadConfirmado) return;
+  
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Obliga a responder
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('⚠️ Verificación de Edad', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+        content: const Text('Para ingresar y utilizar ScanGo debes ser mayor de edad (+18 años). ¿Confirmas que eres mayor de edad?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              if (Platform.isAndroid || Platform.isIOS) {
+                SystemNavigator.pop();
+              } else {
+                Navigator.of(ctx).pop();
+                // En web cerramos forzosamente o mostramos error
+                showDialog(context: ctx, barrierDismissible: false, builder: (_) => const Scaffold(body: Center(child: Text('Acceso Denegado. Solo para mayores de 18 años.', style: TextStyle(fontSize: 20, color: Colors.red)))));
+              }
+            },
+            child: const Text('No, salir', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
+            onPressed: () {
+              _mayorDeEdadConfirmado = true;
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Sí, soy mayor de 18 años'),
+          ),
+        ],
+      ),
+    );
+  });
 }
 
 class ScanGoApp extends StatefulWidget {
@@ -209,12 +261,14 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
     _cargarDisponibilidad();
     _obtenerYGuardarGPS();
     
+    _verificarEdadGlobal(context); // Verificación de edad al entrar
+    
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       _actualizarUltimaConexion();
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _preguntarDeseoDeHoy();
+      if (_mayorDeEdadConfirmado) _preguntarDeseoDeHoy();
     });
   }
 
@@ -238,70 +292,77 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
     if (_yaPreguntoDeseo) return;
     _yaPreguntoDeseo = true;
 
-    final deseoController = TextEditingController();
+    String? deseoSeleccionado = ColombiaData.categoriasDeseo.first;
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.grey[900],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('🌟 ¿Cuál es tu deseo de hoy?', style: TextStyle(color: Colors.greenAccent)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Actualiza tu estado para que otros sepan qué buscas hacer el día de hoy.', style: TextStyle(color: Colors.grey, fontSize: 14)),
-              const SizedBox(height: 20),
-              TextField(
-                controller: deseoController,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  hintText: 'Ej. Tomar un café...',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.greenAccent), borderRadius: BorderRadius.circular(12)),
-                ),
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            return AlertDialog(
+              backgroundColor: Colors.grey[900],
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Text('🌟 ¿Cuál es tu deseo actual?', style: TextStyle(color: Colors.greenAccent)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Actualiza tu estado seleccionando una categoría para que otros sepan qué buscas.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const SizedBox(height: 20),
+                  DropdownButtonFormField<String>(
+                    isExpanded: true, // Evita desbordamiento de texto largo
+                    value: deseoSeleccionado,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.greenAccent), borderRadius: BorderRadius.circular(12)),
+                    ),
+                    items: ColombiaData.categoriasDeseo.map((d) => DropdownMenuItem(
+                      value: d, 
+                      child: Text(d, style: const TextStyle(fontSize: 12), overflow: TextOverflow.visible)
+                    )).toList(),
+                    onChanged: (val) => setStateModal(() => deseoSeleccionado = val),
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                deseoCompletado = true;
-                Navigator.pop(context);
-              },
-              child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
-              onPressed: () async {
-                final nuevoDeseo = deseoController.text.trim();
-                if (nuevoDeseo.isEmpty) {
-                  deseoCompletado = true;
-                  Navigator.pop(context);
-                  return;
-                }
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    deseoCompletado = true;
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
+                  onPressed: () async {
+                    if (deseoSeleccionado == null) {
+                      deseoCompletado = true;
+                      Navigator.pop(context);
+                      return;
+                    }
 
-                try {
-                  final miId = Supabase.instance.client.auth.currentUser?.id;
-                  if (miId != null) {
-                    await Supabase.instance.client.from('perfiles').update({'deseo_actual': nuevoDeseo}).eq('id', miId);
-                  }
-                  if (mounted) {
-                    deseoCompletado = true;
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✨ Deseo actualizado'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    deseoCompletado = true;
-                    Navigator.pop(context);
-                  }
-                }
-              },
-              child: const Text('Actualizar'),
-            ),
-          ],
+                    try {
+                      final miId = Supabase.instance.client.auth.currentUser?.id;
+                      if (miId != null) {
+                        await Supabase.instance.client.from('perfiles').update({'deseo_actual': deseoSeleccionado}).eq('id', miId);
+                      }
+                      if (mounted) {
+                        deseoCompletado = true;
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✨ Deseo actualizado'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        deseoCompletado = true;
+                        Navigator.pop(context);
+                      }
+                    }
+                  },
+                  child: const Text('Actualizar'),
+                ),
+              ],
+            );
+          }
         );
       }
     );
@@ -646,7 +707,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         'id': usuarioNuevo.id, 
         'nombre': nombre,
         'edad': int.parse(edad),
-        'deseo_actual': 'conocer',
+        'deseo_actual': ColombiaData.categoriasDeseo.first, // Se inicializa con la primera categoría
         'genero': _generoDetectado,
         'preferencia': _preferencia,
         'foto_url': fotoUrl,
@@ -757,7 +818,6 @@ class _PantallaMuroState extends State<PantallaMuro> {
   String? _filtroDepartamento;
   String? _filtroCiudad;
 
-  // Variables de Paginación
   int _paginaActual = 0;
   final int _limitePagina = 10;
   bool _cargandoMuro = false;
@@ -768,28 +828,24 @@ class _PantallaMuroState extends State<PantallaMuro> {
   @override
   void initState() {
     super.initState();
+    _verificarEdadGlobal(context);
     _cargarPublicaciones();
   }
 
- Future<void> _cargarPublicaciones() async {
+  Future<void> _cargarPublicaciones() async {
     setState(() => _cargandoMuro = true);
     try {
-      // 1. Iniciar la consulta base (SIN usar .order todavía)
       var query = Supabase.instance.client.from('publicaciones').select();
 
-      // 2. Aplicar todos los filtros geográficos y de categoría
       if (_filtroCategoria != null) query = query.eq('categoria', _filtroCategoria!);
       if (_filtroDepartamento != null) query = query.eq('departamento', _filtroDepartamento!);
       if (_filtroCiudad != null) query = query.eq('ciudad', _filtroCiudad!);
 
-      // 3. Calcular los índices para la paginación
       final from = _paginaActual * _limitePagina;
       final to = from + _limitePagina - 1;
 
-      // 4. Aplicar el ordenamiento y el rango EXACTAMENTE AL FINAL
       final data = await query.order('created_at', ascending: false).range(from, to);
 
-      // Cargar perfiles solo para estas 10 publicaciones
       final userIds = data.map((p) => p['usuario_id']).toSet().toList();
       if (userIds.isNotEmpty) {
         final perfilesData = await Supabase.instance.client.from('perfiles').select().inFilter('id', userIds);
@@ -810,6 +866,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
       if (mounted) setState(() => _cargandoMuro = false);
     }
   }
+
   Widget _construirBuscadorDinamico({
     required String label,
     required Iterable<String> opciones,
@@ -866,7 +923,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
       try {
         await Supabase.instance.client.from('publicaciones').delete().eq('id', pubId);
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Publicación eliminada'), backgroundColor: Colors.green));
-        _cargarPublicaciones(); // Recargar la página actual tras borrar
+        _cargarPublicaciones(); 
       } catch (e) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al eliminar: $e'), backgroundColor: Colors.red));
       }
@@ -930,7 +987,6 @@ class _PantallaMuroState extends State<PantallaMuro> {
                 if (context.mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Publicado con éxito'), backgroundColor: Colors.green));
-                  // Volver al inicio y recargar el muro
                   setState(() => _paginaActual = 0);
                   _cargarPublicaciones();
                 }
@@ -1236,7 +1292,6 @@ class _PantallaMuroState extends State<PantallaMuro> {
                                 },
                               ),
                             ),
-                            // CONTROLES DE PAGINACIÓN
                             Container(
                               padding: const EdgeInsets.all(12),
                               color: Colors.grey[900],
@@ -1300,6 +1355,9 @@ class _PantallaRadarState extends State<PantallaRadar> {
   final AudioPlayer _audioPlayer = AudioPlayer(); 
   bool _dialogoMultiplesAbierto = false;
   bool _esPrimeraCargaSolicitudes = true; 
+  
+  // NUEVO: Filtro de Edad en el Radar
+  RangeValues _rangoEdad = const RangeValues(18, 99);
 
   @override
   void initState() {
@@ -1584,7 +1642,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
               const SizedBox(height: 4),
               Text(distanciaTxt, style: const TextStyle(fontSize: 14, color: Colors.orangeAccent)),
               const SizedBox(height: 8),
-              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent)),
+              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent), textAlign: TextAlign.center),
               const SizedBox(height: 24),
               if (estadoRelacion == 'aceptada') 
                 ElevatedButton.icon(
@@ -1617,116 +1675,150 @@ class _PantallaRadarState extends State<PantallaRadar> {
     final streamPerfiles = Supabase.instance.client.from('perfiles').stream(primaryKey: ['id']);
     final streamSolicitudes = Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']);
 
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: streamPerfiles,
-      builder: (context, snapshotPerfiles) {
-        if (!snapshotPerfiles.hasData) return const Center(child: CircularProgressIndicator());
-        return StreamBuilder<List<Map<String, dynamic>>>(
-          stream: streamSolicitudes,
-          builder: (context, snapshotSolicitudes) {
-            if (!snapshotSolicitudes.hasData) return const Center(child: CircularProgressIndicator());
-            
-            final todosLosPerfiles = snapshotPerfiles.data!;
-            final misSolicitudes = snapshotSolicitudes.data!.where((s) => s['emisor_id'] == miId || s['receptor_id'] == miId).toList();
+    return Column(
+      children: [
+        // Rango de Edad Visual en Radar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: Colors.grey[850],
+          child: Column(
+            children: [
+              Text('Filtrar por edad: ${_rangoEdad.start.round()} a ${_rangoEdad.end.round()} años', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              RangeSlider(
+                values: _rangoEdad,
+                min: 18,
+                max: 99,
+                divisions: 81,
+                activeColor: Colors.greenAccent,
+                labels: RangeLabels('${_rangoEdad.start.round()}', '${_rangoEdad.end.round()}'),
+                onChanged: (RangeValues values) {
+                  setState(() => _rangoEdad = values);
+                },
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<List<Map<String, dynamic>>>(
+            stream: streamPerfiles,
+            builder: (context, snapshotPerfiles) {
+              if (!snapshotPerfiles.hasData) return const Center(child: CircularProgressIndicator());
+              return StreamBuilder<List<Map<String, dynamic>>>(
+                stream: streamSolicitudes,
+                builder: (context, snapshotSolicitudes) {
+                  if (!snapshotSolicitudes.hasData) return const Center(child: CircularProgressIndicator());
+                  
+                  final todosLosPerfiles = snapshotPerfiles.data!;
+                  final misSolicitudes = snapshotSolicitudes.data!.where((s) => s['emisor_id'] == miId || s['receptor_id'] == miId).toList();
 
-            final miPerfil = todosLosPerfiles.firstWhere((p) => p['id'] == miId, orElse: () => {});
-            final miGenero = miPerfil['genero'] ?? '';
-            final miPreferencia = miPerfil['preferencia'] ?? 'AMBAS';
+                  final miPerfil = todosLosPerfiles.firstWhere((p) => p['id'] == miId, orElse: () => {});
+                  final miGenero = miPerfil['genero'] ?? '';
+                  final miPreferencia = miPerfil['preferencia'] ?? 'AMBAS';
 
-            final perfiles = todosLosPerfiles.where((p) {
-              if (p['id'] == miId || p['ultima_conexion'] == null) return false;
-              
-              if (p['disponible'] == false) return false;
+                  final perfiles = todosLosPerfiles.where((p) {
+                    if (p['id'] == miId || p['ultima_conexion'] == null) return false;
+                    
+                    if (p['disponible'] == false) return false;
 
-              final ultimaConexion = DateTime.parse(p['ultima_conexion']);
-              if (DateTime.now().toUtc().difference(ultimaConexion).inMinutes > 15) return false;
+                    // Filtro Rango de Edad
+                    final int edadOtro = p['edad'] ?? 18;
+                    if (edadOtro < _rangoEdad.start.round() || edadOtro > _rangoEdad.end.round()) return false;
 
-              final generoOtro = p['genero'] ?? '';
-              final prefOtro = p['preferencia'] ?? 'AMBAS';
+                    final ultimaConexion = DateTime.parse(p['ultima_conexion']);
+                    if (DateTime.now().toUtc().difference(ultimaConexion).inMinutes > 15) return false;
 
-              bool yoLeGusto = (prefOtro == 'AMBAS' || prefOtro == miGenero);
-              bool elMeGusta = (miPreferencia == 'AMBAS' || miPreferencia == generoOtro);
+                    final generoOtro = p['genero'] ?? '';
+                    final prefOtro = p['preferencia'] ?? 'AMBAS';
 
-              return yoLeGusto && elMeGusta;
-            }).toList();
-            
-            if (widget.miLatitud != null && widget.miLongitud != null) {
-              perfiles.sort((a, b) {
-                final latA = (a['latitud'] as num?)?.toDouble();
-                final lonA = (a['longitud'] as num?)?.toDouble();
-                final latB = (b['latitud'] as num?)?.toDouble();
-                final lonB = (b['longitud'] as num?)?.toDouble();
-                if (latA == null || lonA == null) return 1;
-                if (latB == null || lonB == null) return -1;
-                final distA = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latA, lonA);
-                final distB = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latB, lonB);
-                return distA.compareTo(distB);
-              });
-            }
+                    bool yoLeGusto = (prefOtro == 'AMBAS' || prefOtro == miGenero);
+                    bool elMeGusta = (miPreferencia == 'AMBAS' || miPreferencia == generoOtro);
 
-            if (perfiles.isEmpty) return const Center(child: Text('No hay exploradores compatibles disponibles cerca.', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, color: Colors.grey)));
-            
-            return ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: perfiles.length,
-              itemBuilder: (context, index) {
-                final perfil = perfiles[index];
-                final otroId = perfil['id'];
-                final fotoUrl = perfil['foto_url']?.toString();
-                final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
-                final esVerificado = perfil['verificado_biometria'] == true;
+                    return yoLeGusto && elMeGusta;
+                  }).toList();
+                  
+                  if (widget.miLatitud != null && widget.miLongitud != null) {
+                    perfiles.sort((a, b) {
+                      final latA = (a['latitud'] as num?)?.toDouble();
+                      final lonA = (a['longitud'] as num?)?.toDouble();
+                      final latB = (b['latitud'] as num?)?.toDouble();
+                      final lonB = (b['longitud'] as num?)?.toDouble();
+                      if (latA == null || lonA == null) return 1;
+                      if (latB == null || lonB == null) return -1;
+                      final distA = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latA, lonA);
+                      final distB = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latB, lonB);
+                      return distA.compareTo(distB);
+                    });
+                  }
 
-                String distanciaTxt = '📍 Ubicación desconocida';
-                if (widget.miLatitud != null && widget.miLongitud != null && perfil['latitud'] != null && perfil['longitud'] != null) {
-                  final distMetros = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, (perfil['latitud'] as num).toDouble(), (perfil['longitud'] as num).toDouble());
-                  distanciaTxt = '📍 A ${(distMetros / 1000).toStringAsFixed(1)} km';
-                }
+                  if (perfiles.isEmpty) return const Center(child: Text('No hay exploradores en este rango de edad cerca.', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, color: Colors.grey)));
+                  
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: perfiles.length,
+                    itemBuilder: (context, index) {
+                      final perfil = perfiles[index];
+                      final otroId = perfil['id'];
+                      final fotoUrl = perfil['foto_url']?.toString();
+                      final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+                      final esVerificado = perfil['verificado_biometria'] == true;
 
-                String estadoRelacion = 'ninguna';
-                try {
-                  final relacionExistente = misSolicitudes.firstWhere((s) => (s['emisor_id'] == miId && s['receptor_id'] == otroId) || (s['emisor_id'] == otroId && s['receptor_id'] == miId));
-                  estadoRelacion = relacionExistente['estado'];
-                } catch (e) {}
+                      String distanciaTxt = '📍 Ubicación desconocida';
+                      if (widget.miLatitud != null && widget.miLongitud != null && perfil['latitud'] != null && perfil['longitud'] != null) {
+                        final distMetros = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, (perfil['latitud'] as num).toDouble(), (perfil['longitud'] as num).toDouble());
+                        distanciaTxt = '📍 A ${(distMetros / 1000).toStringAsFixed(1)} km';
+                      }
 
-                Widget botonAccion;
-                if (estadoRelacion == 'aceptada') {
-                  botonAccion = IconButton(icon: const Icon(Icons.chat, color: Colors.blueAccent), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: perfil['nombre'], receptorFoto: fotoUrl))));
-                } else if (estadoRelacion == 'pendiente') {
-                  botonAccion = const Icon(Icons.access_time, color: Colors.orange);
-                } else {
-                  botonAccion = IconButton(icon: const Icon(Icons.send, color: Colors.greenAccent), onPressed: () => enviarSolicitud(context, otroId));
-                }
+                      String estadoRelacion = 'ninguna';
+                      try {
+                        final relacionExistente = misSolicitudes.firstWhere((s) => (s['emisor_id'] == miId && s['receptor_id'] == otroId) || (s['emisor_id'] == otroId && s['receptor_id'] == miId));
+                        estadoRelacion = relacionExistente['estado'];
+                      } catch (e) {}
 
-                return Card(
-                  color: Colors.grey[900],
-                  margin: const EdgeInsets.only(bottom: 15),
-                  child: ListTile(
-                    onTap: () => _mostrarPerfilDetallado(context, perfil, distanciaTxt, true, estadoRelacion),
-                    leading: Stack(
-                      children: [
-                        CircleAvatar(backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null),
-                        Positioned(right: 0, bottom: 0, child: Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2))))
-                      ],
-                    ),
-                    title: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('${perfil['nombre']} • ${perfil['edad']} años', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                        if (esVerificado) ...[
-                          const SizedBox(width: 4),
-                          const Icon(Icons.verified, color: Colors.blueAccent, size: 16),
-                        ],
-                      ],
-                    ),
-                    subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Desea: ${perfil['deseo_actual']}'), Text(distanciaTxt, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12))]),
-                    trailing: botonAccion,
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
+                      Widget botonAccion;
+                      if (estadoRelacion == 'aceptada') {
+                        botonAccion = IconButton(icon: const Icon(Icons.chat, color: Colors.blueAccent), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: perfil['nombre'], receptorFoto: fotoUrl))));
+                      } else if (estadoRelacion == 'pendiente') {
+                        botonAccion = const Icon(Icons.access_time, color: Colors.orange);
+                      } else {
+                        botonAccion = IconButton(icon: const Icon(Icons.send, color: Colors.greenAccent), onPressed: () => enviarSolicitud(context, otroId));
+                      }
+
+                      return Card(
+                        color: Colors.grey[900],
+                        margin: const EdgeInsets.only(bottom: 15),
+                        child: ListTile(
+                          onTap: () => _mostrarPerfilDetallado(context, perfil, distanciaTxt, true, estadoRelacion),
+                          leading: Stack(
+                            children: [
+                              CircleAvatar(backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null),
+                              Positioned(right: 0, bottom: 0, child: Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2))))
+                            ],
+                          ),
+                          title: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('${perfil['nombre']} • ${perfil['edad']} años', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                              if (esVerificado) ...[
+                                const SizedBox(width: 4),
+                                const Icon(Icons.verified, color: Colors.blueAccent, size: 16),
+                              ],
+                            ],
+                          ),
+                          subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('Desea: ${perfil['deseo_actual']}', overflow: TextOverflow.ellipsis), 
+                            Text(distanciaTxt, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12))
+                          ]),
+                          trailing: botonAccion,
+                        ),
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1740,7 +1832,7 @@ class PantallaMiPerfil extends StatefulWidget {
 class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
   final _nombreController = TextEditingController();
   final _edadController = TextEditingController();
-  final _deseoController = TextEditingController();
+  String? _deseoSeleccionado;
   String? _genero;
   String? _preferencia;
   String? _fotoUrl;
@@ -1764,7 +1856,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
           setState(() {
             _nombreController.text = perfil['nombre'] ?? '';
             _edadController.text = perfil['edad']?.toString() ?? '';
-            _deseoController.text = perfil['deseo_actual'] ?? '';
+            _deseoSeleccionado = perfil['deseo_actual'] ?? ColombiaData.categoriasDeseo.first;
             _genero = perfil['genero'] ?? 'HOMBRE';
             _preferencia = perfil['preferencia'] ?? 'AMBAS';
             _fotoUrl = perfil['foto_url'];
@@ -1781,12 +1873,40 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     }
   }
 
+  Future<void> _cambiarFotoPerfil() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? nuevaFoto = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (nuevaFoto == null) return;
+
+    setState(() => _guardando = true);
+    try {
+      final miId = Supabase.instance.client.auth.currentUser!.id;
+      final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      
+      if (!kIsWeb) {
+        await Supabase.instance.client.storage.from('fotos-perfil').upload(fileName, File(nuevaFoto.path));
+      } else {
+        await Supabase.instance.client.storage.from('fotos-perfil').uploadBinary(fileName, await nuevaFoto.readAsBytes());
+      }
+      
+      final nuevaUrl = Supabase.instance.client.storage.from('fotos-perfil').getPublicUrl(fileName);
+
+      await Supabase.instance.client.from('perfiles').update({'foto_url': nuevaUrl}).eq('id', miId);
+
+      setState(() => _fotoUrl = nuevaUrl);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Foto actualizada'), backgroundColor: Colors.green));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
+  }
+
   Future<void> _guardarCambios() async {
     final nombre = _nombreController.text.trim();
     final edad = _edadController.text.trim();
-    final deseo = _deseoController.text.trim();
 
-    if (nombre.isEmpty || edad.isEmpty || deseo.isEmpty) {
+    if (nombre.isEmpty || edad.isEmpty || _deseoSeleccionado == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Completa todos los campos')));
       return;
     }
@@ -1794,7 +1914,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 
     try {
       final miId = Supabase.instance.client.auth.currentUser!.id;
-      await Supabase.instance.client.from('perfiles').upsert({'id': miId, 'nombre': nombre, 'edad': int.parse(edad), 'deseo_actual': deseo, 'genero': _genero, 'preferencia': _preferencia});
+      await Supabase.instance.client.from('perfiles').upsert({'id': miId, 'nombre': nombre, 'edad': int.parse(edad), 'deseo_actual': _deseoSeleccionado, 'genero': _genero, 'preferencia': _preferencia});
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil guardado con éxito'), backgroundColor: Colors.green));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar: $e'), backgroundColor: Colors.red));
@@ -1812,7 +1932,22 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          CircleAvatar(radius: 60, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null, child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.black) : null),
+          GestureDetector(
+            onTap: _cambiarFotoPerfil,
+            child: Stack(
+              children: [
+                CircleAvatar(radius: 60, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null, child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.black) : null),
+                Positioned(
+                  bottom: 0, right: 0,
+                  child: Container(
+                    decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle),
+                    padding: const EdgeInsets.all(8),
+                    child: const Icon(Icons.edit, size: 20, color: Colors.white),
+                  ),
+                )
+              ],
+            ),
+          ),
           if (_esVerificado) ...[
             const SizedBox(height: 10),
             const Row(
@@ -1829,7 +1964,14 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
           const SizedBox(height: 15),
           TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Edad', border: OutlineInputBorder())),
           const SizedBox(height: 15),
-          TextField(controller: _deseoController, decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder())),
+          
+          DropdownButtonFormField<String>(
+            isExpanded: true,
+            value: _deseoSeleccionado,
+            decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder()),
+            items: ColombiaData.categoriasDeseo.map((label) => DropdownMenuItem(value: label, child: Text(label, style: const TextStyle(fontSize: 12), overflow: TextOverflow.visible))).toList(),
+            onChanged: (value) => setState(() => _deseoSeleccionado = value),
+          ),
           const SizedBox(height: 15),
           DropdownButtonFormField<String>(
             value: _genero,
@@ -1883,7 +2025,7 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent)),
+              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent), textAlign: TextAlign.center),
               const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
@@ -2092,9 +2234,13 @@ class _PantallaChatState extends State<PantallaChat> {
       
       final miId = Supabase.instance.client.auth.currentUser!.id;
       final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}.${tipo == 'video' ? 'mp4' : 'jpg'}';
-      final fileBytes = await archivo.readAsBytes();
       
-      await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, fileBytes);
+      if (!kIsWeb) {
+        await Supabase.instance.client.storage.from('chat-media').upload(fileName, File(archivo.path));
+      } else {
+        await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, await archivo.readAsBytes());
+      }
+      
       final url = Supabase.instance.client.storage.from('chat-media').getPublicUrl(fileName);
       
       final prefijo = tipo == 'video' ? '[VID]' : '[IMG]';
