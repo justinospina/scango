@@ -14,7 +14,7 @@ import 'package:local_auth/local_auth.dart';
 
 // ==================== LIBRERÍA DE DATOS DE COLOMBIA ====================
 class ColombiaData {
-  static const List<String> categorias = ['Ligar', 'Contactos', 'Dama de Compañia', 'Hombre de Compañia ', 'Social'];
+  static const List<String> categorias = ['Ligar ( interés  sexual o romantico hacia otra persona sin costo )', 'Dama de Compañia Heterosexual(Mujer dispuesta a complacer Hombres sexualemente y asistir a eventos, reuniones sociales y cenas por un precio)', 'Hombre de Compañia (Hombre  dispuesta a complacer mujeres  sexualemente y asistir a reuniones, eventos sociales y cenas por un precio', 'Hombre Gay (Hombre dispuesto a complacer sexualemnete a otro hombre y asistir a reuniones, eventos sociales y cenas por un precio)', 'Dama lestiana (Mujer dispuesta a complacer sexualmente a otra mujer y asistir a reuniones, eventos sociales y cenas por un precio)', 'Transgenero (Persona que ha cambiado su sexo biologico y desea complacer sexualmente a otra persona y asistir a reuniones, eventos sociales y cenas por un precio)'];
   static const Map<String, List<String>> ubicaciones = {
     'Amazonas': ['Leticia', 'Puerto Nariño'],
     'Antioquia': ['Medellín', 'Bello', 'Itagüí', 'Envigado', 'Apartadó', 'Rionegro', 'Turbo', 'Caucasia'],
