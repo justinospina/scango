@@ -12,12 +12,10 @@ import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:local_auth/local_auth.dart';
 
-// Variable global para controlar la verificación de edad en la sesión actual
 bool _mayorDeEdadConfirmado = false;
 
 // ==================== LIBRERÍA DE DATOS DE COLOMBIA ====================
 class ColombiaData {
-  // Categorías unificadas para Muro y Deseos de Perfil
   static const List<String> categorias = [
     '💘 Ligar: Interés romántico o sexual hacia otra persona sin precio.',
     '💃 Dama de Compañía: Mujer dispuesta en complacer a un hombre sexualmente, asistir a reuniones, viajes, cenas y eventos por un precio.',
@@ -35,32 +33,35 @@ class ColombiaData {
     'Bolívar': ['Cartagena', 'Magangué', 'Turbaco', 'Arjona', 'El Carmen de Bolívar'],
     'Boyacá': ['Tunja', 'Duitama', 'Sogamoso', 'Chiquinquirá', 'Paipa'],
     'Caldas': ['Manizales', 'La Dorada', 'Chinchiná', 'Villamaría', 'Riosucio'],
-    'Caquetá': ['Florencia', 'San Vicente del Caguán', 'Puerto Rico'],
-    'Casanare': ['Yopal', 'Aguazul', 'Paz de Ariporo', 'Villanueva'],
-    'Cauca': ['Popayán', 'Santander de Quilichao', 'El Tambo', 'Puerto Tejada'],
-    'Cesar': ['Valledupar', 'Aguachica', 'Agustín Codazzi', 'Bosconia'],
-    'Chocó': ['Quibdó', 'Istmina', 'Condoto'],
-    'Córdoba': ['Montería', 'Lorica', 'Sahagún', 'Cereté', 'Montelíbano'],
     'Cundinamarca': ['Soacha', 'Chía', 'Zipaquirá', 'Facatativá', 'Fusagasugá', 'Girardot', 'Mosquera'],
-    'Guainía': ['Inírida'],
-    'Guaviare': ['San José del Guaviare'],
-    'Huila': ['Neiva', 'Pitalito', 'Garzón', 'La Plata'],
-    'La Guajira': ['Riohacha', 'Maicao', 'Uribia', 'San Juan del Cesar'],
-    'Magdalena': ['Santa Marta', 'Ciénaga', 'Fundación', 'El Banco'],
-    'Meta': ['Villavicencio', 'Acacías', 'Granada', 'Puerto López'],
-    'Nariño': ['Pasto', 'Tumaco', 'Ipiales', 'Túquerres'],
-    'Norte de Santander': ['Cúcuta', 'Ocaña', 'Villa del Rosario', 'Los Patios', 'Pamplona'],
-    'Putumayo': ['Mocoa', 'Puerto Asís', 'Orito', 'Valle del Guamuez'],
-    'Quindío': ['Armenia', 'Calarcá', 'Montenegro', 'La Tebaida'],
     'Risaralda': ['Pereira', 'Dosquebradas', 'Santa Rosa de Cabal', 'La Virginia'],
-    'San Andrés y Providencia': ['San Andrés', 'Providencia'],
     'Santander': ['Bucaramanga', 'Floridablanca', 'Barrancabermeja', 'Girón', 'Piedecuesta', 'San Gil'],
-    'Sucre': ['Sincelejo', 'Corozal', 'San Marcos', 'Tolú'],
     'Tolima': ['Ibagué', 'Espinal', 'Melgar', 'Chaparral', 'Honda'],
     'Valle del Cauca': ['Cali', 'Buenaventura', 'Palmira', 'Tuluá', 'Jamundí', 'Cartago', 'Buga', 'Yumbo'],
-    'Vaupés': ['Mitú'],
-    'Vichada': ['Puerto Carreño']
   };
+}
+
+// Widget auxiliar para renderizar Categorías con Título Grande y Descripción Pequeña
+Widget _construirTextoCategoria(String textoCompleto) {
+  final partes = textoCompleto.split(':');
+  if (partes.length > 1) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: RichText(
+        text: TextSpan(
+          text: '${partes[0]}:',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+          children: [
+            TextSpan(
+              text: partes[1],
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  return Text(textoCompleto, style: const TextStyle(fontSize: 14));
 }
 
 Future<void> main() async {
@@ -72,7 +73,6 @@ Future<void> main() async {
   runApp(const ScanGoApp());
 }
 
-// Función global para verificar edad
 void _verificarEdadGlobal(BuildContext context) {
   if (_mayorDeEdadConfirmado) return;
   
@@ -315,7 +315,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
                     ),
                     items: ColombiaData.categorias.map((d) => DropdownMenuItem(
                       value: d, 
-                      child: Text(d, style: const TextStyle(fontSize: 12), overflow: TextOverflow.visible)
+                      child: _construirTextoCategoria(d)
                     )).toList(),
                     onChanged: (val) => setStateModal(() => deseoSeleccionado = val),
                   ),
@@ -1006,7 +1006,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
                       isExpanded: true,
                       value: categoriaSel,
                       decoration: InputDecoration(labelText: 'Categoría', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), isDense: true),
-                      items: ColombiaData.categorias.map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 12), overflow: TextOverflow.visible))).toList(),
+                      items: ColombiaData.categorias.map((c) => DropdownMenuItem(value: c, child: _construirTextoCategoria(c))).toList(),
                       onChanged: (val) => setStateModal(() => categoriaSel = val!),
                     ),
                     const SizedBox(height: 10),
@@ -1131,7 +1131,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
                       isExpanded: true,
                       decoration: InputDecoration(labelText: 'Filtrar Categoría', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), isDense: true),
                       value: _filtroCategoria,
-                      items: ['Todas', ...ColombiaData.categorias].map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 12), overflow: TextOverflow.visible))).toList(),
+                      items: ['Todas', ...ColombiaData.categorias].map((c) => DropdownMenuItem(value: c, child: _construirTextoCategoria(c))).toList(),
                       onChanged: (val) {
                         setState(() { _filtroCategoria = val == 'Todas' ? null : val; _paginaActual = 0; });
                         _cargarPublicaciones();
@@ -1230,7 +1230,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
                                                     ),
                                                     Text('${pub['ciudad'] ?? 'Sin Ciudad'}, ${pub['departamento'] ?? ''}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
                                                     if (pub['categoria'] != null)
-                                                      Text('${pub['categoria']}', style: const TextStyle(color: Colors.orangeAccent, fontSize: 11)),
+                                                      Text('${pub['categoria']}'.split(':')[0], style: const TextStyle(color: Colors.orangeAccent, fontSize: 11)),
                                                     Text(fechaStr, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                                   ],
                                                 ),
@@ -1554,7 +1554,8 @@ class _PantallaRadarState extends State<PantallaRadar> {
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
                         onPressed: () {
                           Navigator.pop(context);
-                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: receptor['id'], receptorNombre: receptor['nombre'] ?? 'Explorador', receptorFoto: fotoUrl)));
+                          // En la alerta no tenemos el ID de la solicitud fácilmente, pasaremos un fallback o puedes ignorar el botón match aquí.
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: receptor['id'], receptorNombre: receptor['nombre'] ?? 'Explorador', receptorFoto: fotoUrl, solicitudId: '')));
                         },
                         icon: const Icon(Icons.chat),
                         label: const Text('Abrir Chat Ahora'),
@@ -1608,7 +1609,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
     }
   }
 
-  void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil, String distanciaTxt, bool esActivo, String estadoRelacion) {
+  void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil, String distanciaTxt, bool esActivo, String estadoRelacion, {String? solicitudId}) {
     final fotoUrl = perfil['foto_url']?.toString();
     final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
     final esVerificado = perfil['verificado_biometria'] == true;
@@ -1643,13 +1644,13 @@ class _PantallaRadarState extends State<PantallaRadar> {
               const SizedBox(height: 4),
               Text(distanciaTxt, style: const TextStyle(fontSize: 14, color: Colors.orangeAccent)),
               const SizedBox(height: 8),
-              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent), textAlign: TextAlign.center),
+              _construirTextoCategoria(perfil['deseo_actual'] ?? ''),
               const SizedBox(height: 24),
               if (estadoRelacion == 'aceptada') 
                 ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(context);
-                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: perfil['id'], receptorNombre: perfil['nombre'], receptorFoto: fotoUrl)));
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: perfil['id'], receptorNombre: perfil['nombre'], receptorFoto: fotoUrl, solicitudId: solicitudId ?? '')));
                   },
                   icon: const Icon(Icons.chat), label: const Text('Abrir Chat'), style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
                 )
@@ -1768,14 +1769,16 @@ class _PantallaRadarState extends State<PantallaRadar> {
                       }
 
                       String estadoRelacion = 'ninguna';
+                      String idSolicitud = '';
                       try {
                         final relacionExistente = misSolicitudes.firstWhere((s) => (s['emisor_id'] == miId && s['receptor_id'] == otroId) || (s['emisor_id'] == otroId && s['receptor_id'] == miId));
                         estadoRelacion = relacionExistente['estado'];
+                        idSolicitud = relacionExistente['id'].toString();
                       } catch (e) {}
 
                       Widget botonAccion;
                       if (estadoRelacion == 'aceptada') {
-                        botonAccion = IconButton(icon: const Icon(Icons.chat, color: Colors.blueAccent), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: perfil['nombre'], receptorFoto: fotoUrl))));
+                        botonAccion = IconButton(icon: const Icon(Icons.chat, color: Colors.blueAccent), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: perfil['nombre'], receptorFoto: fotoUrl, solicitudId: idSolicitud))));
                       } else if (estadoRelacion == 'pendiente') {
                         botonAccion = const Icon(Icons.access_time, color: Colors.orange);
                       } else {
@@ -1786,7 +1789,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                         color: Colors.grey[900],
                         margin: const EdgeInsets.only(bottom: 15),
                         child: ListTile(
-                          onTap: () => _mostrarPerfilDetallado(context, perfil, distanciaTxt, true, estadoRelacion),
+                          onTap: () => _mostrarPerfilDetallado(context, perfil, distanciaTxt, true, estadoRelacion, solicitudId: idSolicitud),
                           leading: Stack(
                             children: [
                               CircleAvatar(backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null),
@@ -1804,7 +1807,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                             ],
                           ),
                           subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text('Desea: ${perfil['deseo_actual']}', overflow: TextOverflow.ellipsis), 
+                            Text('${perfil['deseo_actual']}'.split(':')[0], overflow: TextOverflow.ellipsis), 
                             Text(distanciaTxt, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12))
                           ]),
                           trailing: botonAccion,
@@ -1968,7 +1971,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
             isExpanded: true,
             value: _deseoSeleccionado,
             decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder()),
-            items: ColombiaData.categorias.map((label) => DropdownMenuItem(value: label, child: Text(label, style: const TextStyle(fontSize: 12), overflow: TextOverflow.visible))).toList(),
+            items: ColombiaData.categorias.map((label) => DropdownMenuItem(value: label, child: _construirTextoCategoria(label))).toList(),
             onChanged: (value) => setState(() => _deseoSeleccionado = value),
           ),
           const SizedBox(height: 15),
@@ -1995,6 +1998,64 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 
 class PantallaSolicitudesYChats extends StatelessWidget {
   const PantallaSolicitudesYChats({super.key});
+
+  void _mostrarPerfilPendiente(BuildContext context, Map<String, dynamic> perfil, Map<String, dynamic> solicitud) {
+    final fotoUrl = perfil['foto_url']?.toString();
+    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+    final esVerificado = perfil['verificado_biometria'] == true;
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                  if (esVerificado) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.verified, color: Colors.blueAccent, size: 22),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              _construirTextoCategoria(perfil['deseo_actual'] ?? ''),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                    onPressed: () async {
+                      await Supabase.instance.client.from('solicitudes').update({'estado': 'rechazada'}).eq('id', solicitud['id']);
+                      if (context.mounted) Navigator.pop(context);
+                    },
+                    icon: const Icon(Icons.close), label: const Text('Rechazar')
+                  ),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                    onPressed: () async {
+                      await Supabase.instance.client.from('solicitudes').update({'estado': 'aceptada'}).eq('id', solicitud['id']);
+                      if (context.mounted) Navigator.pop(context);
+                    },
+                    icon: const Icon(Icons.check), label: const Text('Aceptar')
+                  ),
+                ],
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   void _mostrarPerfilRapidoLectura(BuildContext context, Map<String, dynamic> perfil) {
     final fotoUrl = perfil['foto_url']?.toString();
@@ -2024,7 +2085,7 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent), textAlign: TextAlign.center),
+              _construirTextoCategoria(perfil['deseo_actual'] ?? ''),
               const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
@@ -2109,13 +2170,14 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                           return Card(
                             color: Colors.grey[850],
                             child: ListTile(
+                              onTap: () => _mostrarPerfilPendiente(context, emisor, s),
                               title: Row(
                                 children: [
                                   Text(emisor['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
                                   if (esVerificado) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.verified, color: Colors.blueAccent, size: 16)),
                                 ],
                               ),
-                              subtitle: const Text('Quiere conectar contigo'),
+                              subtitle: const Text('Toque para ver perfil', style: TextStyle(color: Colors.greenAccent, fontSize: 12)),
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -2135,6 +2197,11 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                         final fotoUrl = otroPerfil['foto_url']?.toString();
                         final esVerificado = otroPerfil['verificado_biometria'] == true;
                         
+                        // LÓGICA DE MATCH DE "ME GUSTA" MUTUO
+                        final bool yoDiLike = (s['emisor_id'] == miId) ? (s['emisor_like'] == true) : (s['receptor_like'] == true);
+                        final bool elDioLike = (s['emisor_id'] == miId) ? (s['receptor_like'] == true) : (s['emisor_like'] == true);
+                        final bool matchMutuo = yoDiLike && elDioLike;
+
                         final mensajesSinLeer = mensajesTotales.where((m) => m['receptor_id'] == miId && m['emisor_id'] == otroId && (m['leido'] == null || m['leido'] == false)).length;
 
                         return Card(
@@ -2168,13 +2235,15 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                                  ],
                                ),
                             ),
-                            subtitle: const Text('Toca aquí para abrir el chat'),
+                            subtitle: matchMutuo 
+                                ? const Text('❤️ Se gustan!', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
+                                : const Text('Toca aquí para abrir el chat'),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
                               onPressed: () => _eliminarVinculoYCreados(context, s['id'].toString(), otroId, miId!),
                             ),
                             onTap: () {
-                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: otroPerfil['nombre'] ?? 'Explorador', receptorFoto: fotoUrl)));
+                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: otroPerfil['nombre'] ?? 'Explorador', receptorFoto: fotoUrl, solicitudId: s['id'].toString())));
                             },
                           ),
                         );
@@ -2195,8 +2264,9 @@ class PantallaChat extends StatefulWidget {
   final String receptorId;
   final String receptorNombre;
   final String? receptorFoto;
+  final String solicitudId;
 
-  const PantallaChat({super.key, required this.receptorId, required this.receptorNombre, this.receptorFoto});
+  const PantallaChat({super.key, required this.receptorId, required this.receptorNombre, this.receptorFoto, required this.solicitudId});
   @override
   State<PantallaChat> createState() => _PantallaChatState();
 }
@@ -2286,7 +2356,39 @@ class _PantallaChatState extends State<PantallaChat> {
             const SizedBox(width: 10),
             Expanded(child: Text(widget.receptorNombre, overflow: TextOverflow.ellipsis)),
           ],
-        )
+        ),
+        actions: [
+          if (widget.solicitudId.isNotEmpty)
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']).eq('id', widget.solicitudId),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData || snapshot.data!.isEmpty) return const SizedBox();
+                final sol = snapshot.data!.first;
+                
+                final bool soyEmisor = sol['emisor_id'] == miId;
+                final bool yoDiLike = soyEmisor ? (sol['emisor_like'] == true) : (sol['receptor_like'] == true);
+                final bool elDioLike = soyEmisor ? (sol['receptor_like'] == true) : (sol['emisor_like'] == true);
+                final bool match = yoDiLike && elDioLike;
+
+                return Row(
+                  children: [
+                    if (match)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 8.0),
+                        child: Text('❤️ Match Mutuo', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    IconButton(
+                      icon: Icon(yoDiLike ? Icons.favorite : Icons.favorite_border, color: Colors.redAccent),
+                      onPressed: () async {
+                        final campo = soyEmisor ? 'emisor_like' : 'receptor_like';
+                        await Supabase.instance.client.from('solicitudes').update({campo: !yoDiLike}).eq('id', widget.solicitudId);
+                      }
+                    ),
+                  ],
+                );
+              }
+            )
+        ],
       ),
       body: Center(
         child: ConstrainedBox(
