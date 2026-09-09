@@ -245,6 +245,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
   double? _miLatitud;
   double? _miLongitud;
   Timer? _heartbeatTimer;
+  StreamSubscription<Position>? _positionStream;
   bool _yaPreguntoDeseo = false;
   bool _estaDisponible = true;
   
@@ -255,7 +256,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
     super.initState();
     deseoCompletado = false;
     _cargarDisponibilidad();
-    _obtenerYGuardarGPS();
+    _iniciarRastreoGPS();
     
     _verificarEdadGlobal(context);
     
@@ -271,6 +272,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
   @override
   void dispose() {
     _heartbeatTimer?.cancel();
+    _positionStream?.cancel();
     super.dispose();
   }
 
@@ -373,7 +375,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
     }
   }
 
-  Future<void> _obtenerYGuardarGPS() async {
+  Future<void> _iniciarRastreoGPS() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
@@ -383,22 +385,36 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
         if (permission == LocationPermission.denied) return;
       }
       if (permission == LocationPermission.deniedForever) return;
-      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      
+
+      final posInicial = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       if (mounted) {
         setState(() {
-          _miLatitud = position.latitude;
-          _miLongitud = position.longitude;
+          _miLatitud = posInicial.latitude;
+          _miLongitud = posInicial.longitude;
         });
       }
-      final miId = Supabase.instance.client.auth.currentUser?.id;
-      if (miId != null) {
-        await Supabase.instance.client.from('perfiles').update({
-          'latitud': position.latitude,
-          'longitud': position.longitude,
-          'ultima_conexion': DateTime.now().toUtc().toIso8601String(),
-        }).eq('id', miId);
-      }
+
+      const LocationSettings locationSettings = LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 15,
+      );
+
+      _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) async {
+        if (mounted) {
+          setState(() {
+            _miLatitud = position.latitude;
+            _miLongitud = position.longitude;
+          });
+        }
+        final miId = Supabase.instance.client.auth.currentUser?.id;
+        if (miId != null) {
+          await Supabase.instance.client.from('perfiles').update({
+            'latitud': position.latitude,
+            'longitud': position.longitude,
+            'ultima_conexion': DateTime.now().toUtc().toIso8601String(),
+          }).eq('id', miId);
+        }
+      });
     } catch (e) {
       debugPrint("Error GPS: $e");
     }
@@ -1358,7 +1374,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
   bool _esPrimeraCargaSolicitudes = true; 
   
   RangeValues _rangoEdad = const RangeValues(18, 99);
-  double _distanciaMaximaKm = 15.0; // Rango de distancia en km
+  double _distanciaMaximaKm = 15.0; 
 
   @override
   void initState() {
@@ -1734,13 +1750,14 @@ class _PantallaRadarState extends State<PantallaRadar> {
                     final int edadOtro = p['edad'] ?? 18;
                     if (edadOtro < _rangoEdad.start.round() || edadOtro > _rangoEdad.end.round()) return false;
 
-                    // Filtro Dinámico de Distancia (Sólo si ambos tienen GPS)
                     if (widget.miLatitud != null && widget.miLongitud != null && p['latitud'] != null && p['longitud'] != null) {
                       final distMetros = Geolocator.distanceBetween(
                         widget.miLatitud!, widget.miLongitud!, 
                         (p['latitud'] as num).toDouble(), (p['longitud'] as num).toDouble()
                       );
                       if (distMetros > _distanciaMaximaKm * 1000) return false;
+                    } else {
+                      return false; 
                     }
 
                     final ultimaConexion = DateTime.parse(p['ultima_conexion']);
@@ -2216,7 +2233,6 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                         final fotoUrl = otroPerfil['foto_url']?.toString();
                         final esVerificado = otroPerfil['verificado_biometria'] == true;
                         
-                        // LÓGICA DE MATCH DE "ME GUSTA" MUTUO
                         final bool yoDiLike = (s['emisor_id'] == miId) ? (s['emisor_like'] == true) : (s['receptor_like'] == true);
                         final bool elDioLike = (s['emisor_id'] == miId) ? (s['receptor_like'] == true) : (s['emisor_like'] == true);
                         final bool matchMutuo = yoDiLike && elDioLike;
