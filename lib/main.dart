@@ -551,13 +551,14 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
         });
       }
 
-      // Mayor precisión: Actualizar cada 3 metros y usar mejor sensor
       const LocationSettings locationSettings = LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 3, 
+        distanceFilter: 1, 
       );
 
       _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) async {
+        if (position.accuracy > 15.0) return;
+
         if (mounted) {
           setState(() {
             _miLatitud = position.latitude;
@@ -1821,7 +1822,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
               const SizedBox(height: 4),
               Text(distanciaTxt, style: const TextStyle(fontSize: 14, color: Colors.orangeAccent)),
               const SizedBox(height: 8),
-              _construirTextoCategoria(perfil['deseo_actual'] ?? ''),
+              Text('Desea: ${perfil['deseo_actual'] ?? ''}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent), textAlign: TextAlign.center),
               const SizedBox(height: 24),
               if (estadoRelacion == 'aceptada') 
                 ElevatedButton.icon(
@@ -1966,28 +1967,41 @@ class _PantallaRadarState extends State<PantallaRadar> {
                         distanciaTxt = '📍 A ${distMetros.round()} metros';
                       }
 
-                      String estadoRelacion = 'ninguna';
-                      String idSolicitud = '';
+                      Map<String, dynamic>? relacionExistente;
                       try {
-                        final relacionExistente = misSolicitudes.firstWhere((s) => (s['emisor_id'] == miId && s['receptor_id'] == otroId) || (s['emisor_id'] == otroId && s['receptor_id'] == miId));
-                        estadoRelacion = relacionExistente['estado'];
-                        idSolicitud = relacionExistente['id'].toString();
+                        relacionExistente = misSolicitudes.firstWhere((s) => (s['emisor_id'] == miId && s['receptor_id'] == otroId) || (s['emisor_id'] == otroId && s['receptor_id'] == miId));
                       } catch (e) {}
 
+                      String estadoRelacion = relacionExistente?['estado'] ?? 'ninguna';
                       Widget botonAccion;
                       if (estadoRelacion == 'aceptada') {
-                        botonAccion = IconButton(icon: const Icon(Icons.chat, color: Colors.blueAccent), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: perfil['nombre'], receptorFoto: fotoUrl, solicitudId: idSolicitud))));
+                        botonAccion = IconButton(icon: const Icon(Icons.chat, color: Colors.blueAccent), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: perfil['nombre'], receptorFoto: fotoUrl, solicitudId: relacionExistente!['id'].toString()))));
                       } else if (estadoRelacion == 'pendiente') {
                         botonAccion = const Icon(Icons.access_time, color: Colors.orange);
                       } else {
-                        botonAccion = IconButton(icon: const Icon(Icons.send, color: Colors.greenAccent), onPressed: () => enviarSolicitud(context, otroId));
+                        botonAccion = IconButton(
+                          icon: const Icon(Icons.send, color: Colors.greenAccent), 
+                          onPressed: () async {
+                            try {
+                              await Supabase.instance.client.from('solicitudes').insert({'emisor_id': miId, 'receptor_id': otroId, 'estado': 'pendiente'});
+                              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Solicitud enviada exitosamente'), backgroundColor: Colors.green));
+                            } catch(e) {}
+                          }
+                        );
                       }
 
                       return Card(
                         color: Colors.grey[900],
                         margin: const EdgeInsets.only(bottom: 15),
                         child: ListTile(
-                          onTap: () => _mostrarPerfilDetallado(context, perfil, distanciaTxt, true, estadoRelacion, solicitudId: idSolicitud),
+                          onTap: () {
+                            showModalBottomSheet(
+                              context: context,
+                              backgroundColor: Colors.transparent,
+                              isScrollControlled: true,
+                              builder: (_) => ModalPerfilDetalle(perfil: perfil, distanciaTxt: distanciaTxt, relacionExistenteInit: relacionExistente, miId: miId!)
+                            );
+                          },
                           leading: Stack(
                             children: [
                               CircleAvatar(backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null),
@@ -2005,7 +2019,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                             ],
                           ),
                           subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text('${perfil['deseo_actual']}'.split(':')[0], overflow: TextOverflow.ellipsis), 
+                            Text('${perfil['deseo_actual']}', overflow: TextOverflow.ellipsis), 
                             Text(distanciaTxt, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12))
                           ]),
                           trailing: botonAccion,
@@ -2032,7 +2046,7 @@ class PantallaMiPerfil extends StatefulWidget {
 class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
   final _nombreController = TextEditingController();
   final _edadController = TextEditingController();
-  String? _deseoSeleccionado;
+  final _deseoController = TextEditingController();
   String? _genero;
   String? _preferencia;
   String? _fotoUrl;
@@ -2056,7 +2070,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
           setState(() {
             _nombreController.text = perfil['nombre'] ?? '';
             _edadController.text = perfil['edad']?.toString() ?? '';
-            _deseoSeleccionado = perfil['deseo_actual'] ?? ColombiaData.categorias.first;
+            _deseoController.text = perfil['deseo_actual'] ?? '';
             _genero = perfil['genero'] ?? 'HOMBRE';
             _preferencia = perfil['preferencia'] ?? 'AMBAS';
             _fotoUrl = perfil['foto_url'];
@@ -2105,8 +2119,9 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
   Future<void> _guardarCambios() async {
     final nombre = _nombreController.text.trim();
     final edad = _edadController.text.trim();
+    final deseo = _deseoController.text.trim();
 
-    if (nombre.isEmpty || edad.isEmpty || _deseoSeleccionado == null) {
+    if (nombre.isEmpty || edad.isEmpty || deseo.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Completa todos los campos')));
       return;
     }
@@ -2114,7 +2129,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 
     try {
       final miId = Supabase.instance.client.auth.currentUser!.id;
-      await Supabase.instance.client.from('perfiles').upsert({'id': miId, 'nombre': nombre, 'edad': int.parse(edad), 'deseo_actual': _deseoSeleccionado, 'genero': _genero, 'preferencia': _preferencia});
+      await Supabase.instance.client.from('perfiles').upsert({'id': miId, 'nombre': nombre, 'edad': int.parse(edad), 'deseo_actual': deseo, 'genero': _genero, 'preferencia': _preferencia});
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil guardado con éxito'), backgroundColor: Colors.green));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar: $e'), backgroundColor: Colors.red));
@@ -2164,14 +2179,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
           const SizedBox(height: 15),
           TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Edad', border: OutlineInputBorder())),
           const SizedBox(height: 15),
-          
-          DropdownButtonFormField<String>(
-            isExpanded: true,
-            value: _deseoSeleccionado,
-            decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder()),
-            items: ColombiaData.categorias.map((label) => DropdownMenuItem(value: label, child: _construirTextoCategoria(label))).toList(),
-            onChanged: (value) => setState(() => _deseoSeleccionado = value),
-          ),
+          TextField(controller: _deseoController, decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder())),
           const SizedBox(height: 15),
           DropdownButtonFormField<String>(
             value: _genero,
@@ -2196,106 +2204,6 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 
 class PantallaSolicitudesYChats extends StatelessWidget {
   const PantallaSolicitudesYChats({super.key});
-
-  void _mostrarPerfilPendiente(BuildContext context, Map<String, dynamic> perfil, Map<String, dynamic> solicitud) {
-    final fotoUrl = perfil['foto_url']?.toString();
-    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
-    final esVerificado = perfil['verificado_biometria'] == true;
-    
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.grey[900],
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                  if (esVerificado) ...[
-                    const SizedBox(width: 6),
-                    const Icon(Icons.verified, color: Colors.blueAccent, size: 22),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 8),
-              _construirTextoCategoria(perfil['deseo_actual'] ?? ''),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-                    onPressed: () async {
-                      await Supabase.instance.client.from('solicitudes').update({'estado': 'rechazada'}).eq('id', solicitud['id']);
-                      if (context.mounted) Navigator.pop(context);
-                    },
-                    icon: const Icon(Icons.close), label: const Text('Rechazar')
-                  ),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                    onPressed: () async {
-                      await Supabase.instance.client.from('solicitudes').update({'estado': 'aceptada'}).eq('id', solicitud['id']);
-                      if (context.mounted) Navigator.pop(context);
-                    },
-                    icon: const Icon(Icons.check), label: const Text('Aceptar')
-                  ),
-                ],
-              )
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _mostrarPerfilRapidoLectura(BuildContext context, Map<String, dynamic> perfil) {
-    final fotoUrl = perfil['foto_url']?.toString();
-    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
-    final esVerificado = perfil['verificado_biometria'] == true;
-    
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.grey[900],
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                  if (esVerificado) ...[
-                    const SizedBox(width: 6),
-                    const Icon(Icons.verified, color: Colors.blueAccent, size: 22),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 8),
-              _construirTextoCategoria(perfil['deseo_actual'] ?? ''),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[700], foregroundColor: Colors.white),
-                child: const Text('Cerrar'),
-              )
-            ],
-          ),
-        );
-      },
-    );
-  }
 
   Future<void> _eliminarVinculoYCreados(BuildContext context, String solicitudId, String otroId, String miId) async {
     final confirmar = await showDialog<bool>(
@@ -2368,7 +2276,14 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                           return Card(
                             color: Colors.grey[850],
                             child: ListTile(
-                              onTap: () => _mostrarPerfilPendiente(context, emisor, s),
+                              onTap: () {
+                                showModalBottomSheet(
+                                  context: context,
+                                  backgroundColor: Colors.transparent,
+                                  isScrollControlled: true,
+                                  builder: (_) => ModalPerfilDetalle(perfil: emisor, distanciaTxt: 'Pendiente', relacionExistenteInit: s, miId: miId!)
+                                );
+                              },
                               title: Row(
                                 children: [
                                   Text(emisor['nombre'] ?? 'Explorador', style: const TextStyle(color: Colors.white)),
@@ -2586,7 +2501,7 @@ class _PantallaChatState extends State<PantallaChat> {
                     if (match)
                       const Padding(
                         padding: EdgeInsets.only(right: 8.0),
-                        child: Text('❤️ Match Mutuo', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                        child: Text('💖 Match Mutuo', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 12)),
                       ),
                     IconButton(
                       icon: Icon(yoDiLike ? Icons.favorite : Icons.favorite_border, color: Colors.redAccent),
