@@ -14,7 +14,7 @@ import 'package:local_auth/local_auth.dart';
 
 bool _mayorDeEdadConfirmado = false;
 
-// ==================== LIBRERÍA DE DATOS ====================
+// ==================== LIBRERÍA DE DATOS DE COLOMBIA ====================
 class ColombiaData {
   static const List<String> categorias = [
     '💘 Ligar: Interés romántico o sexual hacia otra persona sin precio.',
@@ -178,6 +178,7 @@ class _ScanGoAppState extends State<ScanGoApp> with WidgetsBindingObserver {
 
       if (mounted) setState(() => _autenticado = exitoso);
     } catch (e) {
+      debugPrint("Error biometría: $e");
       if (mounted) setState(() => _autenticado = true);
     } finally {
       if (mounted) setState(() => _autenticando = false);
@@ -422,6 +423,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
     _cargarDisponibilidad();
     _iniciarRastreoGPS();
     
+    // Verificación única al iniciar sesión
     _verificarEdadGlobal(context);
     
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 5), (_) {
@@ -454,70 +456,77 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
     if (_yaPreguntoDeseo) return;
     _yaPreguntoDeseo = true;
 
-    final deseoController = TextEditingController();
+    String? deseoSeleccionado = ColombiaData.categorias.first;
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.grey[900],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('🌟 ¿Cuál es tu deseo de hoy?', style: TextStyle(color: Colors.greenAccent)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Actualiza tu estado para que otros sepan qué buscas hacer el día de hoy.', style: TextStyle(color: Colors.grey, fontSize: 14)),
-              const SizedBox(height: 20),
-              TextField(
-                controller: deseoController,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  hintText: 'Ej. Tomar un café...',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.greenAccent), borderRadius: BorderRadius.circular(12)),
-                ),
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            return AlertDialog(
+              backgroundColor: Colors.grey[900],
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Text('🌟 ¿Cuál es tu deseo actual?', style: TextStyle(color: Colors.greenAccent)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Actualiza tu estado seleccionando una categoría para que otros sepan qué buscas.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const SizedBox(height: 20),
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: deseoSeleccionado,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.greenAccent), borderRadius: BorderRadius.circular(12)),
+                    ),
+                    items: ColombiaData.categorias.map((d) => DropdownMenuItem(
+                      value: d, 
+                      child: _construirTextoCategoria(d)
+                    )).toList(),
+                    onChanged: (val) => setStateModal(() => deseoSeleccionado = val),
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                deseoCompletado = true;
-                Navigator.pop(context);
-              },
-              child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
-              onPressed: () async {
-                final nuevoDeseo = deseoController.text.trim();
-                if (nuevoDeseo.isEmpty) {
-                  deseoCompletado = true;
-                  Navigator.pop(context);
-                  return;
-                }
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    deseoCompletado = true;
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
+                  onPressed: () async {
+                    if (deseoSeleccionado == null) {
+                      deseoCompletado = true;
+                      Navigator.pop(context);
+                      return;
+                    }
 
-                try {
-                  final miId = Supabase.instance.client.auth.currentUser?.id;
-                  if (miId != null) {
-                    await Supabase.instance.client.from('perfiles').update({'deseo_actual': nuevoDeseo}).eq('id', miId);
-                  }
-                  if (mounted) {
-                    deseoCompletado = true;
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✨ Deseo actualizado'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    deseoCompletado = true;
-                    Navigator.pop(context);
-                  }
-                }
-              },
-              child: const Text('Actualizar'),
-            ),
-          ],
+                    try {
+                      final miId = Supabase.instance.client.auth.currentUser?.id;
+                      if (miId != null) {
+                        await Supabase.instance.client.from('perfiles').update({'deseo_actual': deseoSeleccionado}).eq('id', miId);
+                      }
+                      if (mounted) {
+                        deseoCompletado = true;
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✨ Deseo actualizado'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        deseoCompletado = true;
+                        Navigator.pop(context);
+                      }
+                    }
+                  },
+                  child: const Text('Actualizar'),
+                ),
+              ],
+            );
+          }
         );
       }
     );
@@ -551,14 +560,14 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
         });
       }
 
+      // Máxima precisión: distanceFilter a 0 obliga actualizaciones inmediatas por el mínimo movimiento
       const LocationSettings locationSettings = LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 1, 
+        distanceFilter: 0, 
       );
 
       _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) async {
-        if (position.accuracy > 15.0) return;
-
+        // Se ha removido el filtro de precisión bloqueador (accuracy > 15.0) para asegurar fluidez de datos GPS
         if (mounted) {
           setState(() {
             _miLatitud = position.latitude;
@@ -1003,7 +1012,10 @@ class _PantallaMuroState extends State<PantallaMuro> {
   @override
   void initState() {
     super.initState();
-    _verificarEdadGlobal(context);
+    // Condición de verificación única para muro público
+    if (widget.esInvitado) {
+      _verificarEdadGlobal(context);
+    }
     _cargarPublicaciones();
   }
 
@@ -1973,9 +1985,11 @@ class _PantallaRadarState extends State<PantallaRadar> {
                       } catch (e) {}
 
                       String estadoRelacion = relacionExistente?['estado'] ?? 'ninguna';
+                      String idSolicitud = relacionExistente?['id']?.toString() ?? '';
+
                       Widget botonAccion;
                       if (estadoRelacion == 'aceptada') {
-                        botonAccion = IconButton(icon: const Icon(Icons.chat, color: Colors.blueAccent), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: perfil['nombre'], receptorFoto: fotoUrl, solicitudId: relacionExistente!['id'].toString()))));
+                        botonAccion = IconButton(icon: const Icon(Icons.chat, color: Colors.blueAccent), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: perfil['nombre'], receptorFoto: fotoUrl, solicitudId: idSolicitud))));
                       } else if (estadoRelacion == 'pendiente') {
                         botonAccion = const Icon(Icons.access_time, color: Colors.orange);
                       } else {
@@ -2205,6 +2219,48 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 class PantallaSolicitudesYChats extends StatelessWidget {
   const PantallaSolicitudesYChats({super.key});
 
+  void _mostrarPerfilRapidoLectura(BuildContext context, Map<String, dynamic> perfil) {
+    final fotoUrl = perfil['foto_url']?.toString();
+    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+    final esVerificado = perfil['verificado_biometria'] == true;
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                  if (esVerificado) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.verified, color: Colors.blueAccent, size: 22),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent), textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[700], foregroundColor: Colors.white),
+                child: const Text('Cerrar'),
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _eliminarVinculoYCreados(BuildContext context, String solicitudId, String otroId, String miId) async {
     final confirmar = await showDialog<bool>(
       context: context,
@@ -2362,7 +2418,7 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                                ),
                             ),
                             subtitle: matchMutuo 
-                                ? const Text('💖 ¡Personas que se gustan!', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
+                                ? const Text('💖 Match Mutuo', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
                                 : const Text('Toca aquí para abrir el chat'),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
