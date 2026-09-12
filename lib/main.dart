@@ -413,7 +413,7 @@ class PantallaPrincipal extends StatefulWidget {
 }
 
 class PantallaPrincipalState extends State<PantallaPrincipal> {
-  int _indiceActual = 0;
+  int _indiceActual = 1; // 1 = Mapa/Radar será la pantalla principal por defecto al iniciar sesión
   double? _miLatitud;
   double? _miLongitud;
   Timer? _heartbeatTimer;
@@ -1564,6 +1564,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
             final miId = Supabase.instance.client.auth.currentUser?.id;
             
             if (miId == null || nuevoPerfil['id'] == miId) return;
+
             if (nuevoPerfil['disponible'] == false) return;
 
             if (widget.miLatitud != null && widget.miLongitud != null && nuevoPerfil['latitud'] != null && nuevoPerfil['longitud'] != null) {
@@ -1775,22 +1776,24 @@ class _PantallaRadarState extends State<PantallaRadar> {
     final List<Marker> marcadores = [];
     final List<Polyline> lineasMatch = [];
 
+    // Tu propio marcador en el mapa (REQ 1: Foto más pequeña para el usuario logueado)
     marcadores.add(
       Marker(
         point: miUbicacion,
-        width: 80,
-        height: 80,
+        width: 50,
+        height: 50,
         child: Container(
-          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.greenAccent, width: 3), boxShadow: [BoxShadow(color: Colors.greenAccent.withOpacity(0.4), blurRadius: 20, spreadRadius: 5)]),
+          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.greenAccent, width: 2), boxShadow: [BoxShadow(color: Colors.greenAccent.withOpacity(0.4), blurRadius: 10, spreadRadius: 2)]),
           child: CircleAvatar(
             backgroundColor: Colors.black,
             backgroundImage: miPerfil['foto_url'] != null ? NetworkImage(miPerfil['foto_url']) : null,
-            child: miPerfil['foto_url'] == null ? const Icon(Icons.person, color: Colors.white) : null,
+            child: miPerfil['foto_url'] == null ? const Icon(Icons.person, color: Colors.white, size: 20) : null,
           ),
         )
       ),
     );
 
+    // Marcadores de los demás exploradores
     for (var perfil in perfilesCompatibles) {
       final latOtro = (perfil['latitud'] as num?)?.toDouble();
       final lonOtro = (perfil['longitud'] as num?)?.toDouble();
@@ -1816,7 +1819,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
         elDioLike = soyEmisor ? (relacionExistente['receptor_like'] == true) : (relacionExistente['emisor_like'] == true);
       }
       bool matchMutuo = yoDiLike && elDioLike;
-      String estadoRelacion = relacionExistente?['estado'] ?? 'ninguna';
 
       int mensajesSinLeer = misMensajes.where((m) => m['emisor_id'] == otroId && (m['leido'] == null || m['leido'] == false)).length;
 
@@ -1830,76 +1832,77 @@ class _PantallaRadarState extends State<PantallaRadar> {
         );
       }
 
+      // REQ 1: Fotos más grandes para los otros perfiles
       marcadores.add(
         Marker(
           point: ubicacionOtro,
-          width: 100,
-          height: 100,
+          width: 120,
+          height: 140,
           child: GestureDetector(
             onTap: () {
-              if (estadoRelacion == 'aceptada') {
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(
-                  receptorId: otroId, 
-                  receptorNombre: perfil['nombre'] ?? 'Explorador', 
-                  receptorFoto: fotoUrl, 
-                  solicitudId: relacionExistente!['id'].toString()
-                )));
-              } else {
-                showModalBottomSheet(
-                  context: context,
-                  backgroundColor: Colors.transparent,
-                  isScrollControlled: true,
-                  builder: (_) => ModalPerfilDetalle(
-                    perfil: perfil, 
-                    distanciaTxt: '📍 A ${distMetros.round()} metros', 
-                    relacionExistenteInit: relacionExistente, 
-                    miId: miId
-                  )
-                );
-              }
+              // REQ 3: Al dar clic, SIEMPRE se abre primero la ventana con la opción "Abrir chat"
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: Colors.transparent,
+                isScrollControlled: true,
+                builder: (_) => ModalPerfilDetalle(
+                  perfil: perfil, 
+                  distanciaTxt: '📍 A ${distMetros.round()} metros', 
+                  relacionExistenteInit: relacionExistente, 
+                  miId: miId
+                )
+              );
             },
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Stack(
                   clipBehavior: Clip.none,
+                  alignment: Alignment.center,
                   children: [
                     CircleAvatar(
-                      radius: 22,
+                      radius: 30, // Avatar más grande
                       backgroundColor: Colors.blueAccent,
                       backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
-                      child: !tieneFoto ? const Icon(Icons.person, size: 22, color: Colors.white) : null,
+                      child: !tieneFoto ? const Icon(Icons.person, size: 30, color: Colors.white) : null,
                     ),
+                    
+                    // REQ 2: Icono de Nube encima de la foto de perfil con el número de mensajes
                     if (mensajesSinLeer > 0)
                       Positioned(
-                        top: -8, right: -8,
-                        child: Container(
-                          padding: const EdgeInsets.all(5),
-                          decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2)),
-                          child: Text('$mensajesSinLeer', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        top: -20, // Sobresale arriba de la foto
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            const Icon(Icons.cloud, color: Colors.redAccent, size: 36),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Text('$mensajesSinLeer', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
                         ),
                       )
                     else if (matchMutuo)
                       Positioned(
                         bottom: -5, right: -5,
                         child: Container(
-                          padding: const EdgeInsets.all(2),
+                          padding: const EdgeInsets.all(4),
                           decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                          child: const Icon(Icons.favorite, color: Colors.white, size: 12),
+                          child: const Icon(Icons.favorite, color: Colors.white, size: 14),
                         ),
                       )
                     else if (yoDiLike)
                       Positioned(
                         bottom: -5, right: -5,
                         child: Container(
-                          padding: const EdgeInsets.all(2),
+                          padding: const EdgeInsets.all(4),
                           decoration: const BoxDecoration(color: Colors.grey, shape: BoxShape.circle),
-                          child: const Icon(Icons.favorite_border, color: Colors.white, size: 12),
+                          child: const Icon(Icons.favorite_border, color: Colors.white, size: 14),
                         ),
                       )
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
@@ -1907,9 +1910,9 @@ class _PantallaRadarState extends State<PantallaRadar> {
                     borderRadius: BorderRadius.circular(5), 
                     border: Border.all(color: matchMutuo ? Colors.redAccent : Colors.greenAccent, width: matchMutuo ? 1.5 : 0.5)
                   ),
-                  child: Text(perfil['nombre'] ?? 'Explorador', style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                  child: Text(perfil['nombre'] ?? 'Explorador', style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
                 ),
-                Text('${distMetros.round()} m', style: const TextStyle(fontSize: 11, color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+                Text('${distMetros.round()} m', style: const TextStyle(fontSize: 12, color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -2372,13 +2375,18 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                             ),
                             subtitle: matchMutuo 
                                 ? const Text('💖 ¡Personas que se gustan!', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
-                                : const Text('Toca aquí para abrir el chat'),
+                                : const Text('Toca aquí para abrir el modal'),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
                               onPressed: () => _eliminarVinculoYCreados(context, s['id'].toString(), otroId, miId!),
                             ),
                             onTap: () {
-                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: otroPerfil['nombre'] ?? 'Explorador', receptorFoto: fotoUrl, solicitudId: s['id'].toString())));
+                              showModalBottomSheet(
+                                context: context,
+                                backgroundColor: Colors.transparent,
+                                isScrollControlled: true,
+                                builder: (_) => ModalPerfilDetalle(perfil: otroPerfil, distanciaTxt: 'Chat Abierto', relacionExistenteInit: s, miId: miId!)
+                              );
                             },
                           ),
                         );
