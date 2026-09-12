@@ -1864,19 +1864,22 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    Badge(
-                      isLabelVisible: mensajesSinLeer > 0,
-                      label: Text('$mensajesSinLeer', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                      backgroundColor: Colors.red,
-                      offset: const Offset(4, -4),
-                      child: CircleAvatar(
-                        radius: 22,
-                        backgroundColor: Colors.blueAccent,
-                        backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
-                        child: !tieneFoto ? const Icon(Icons.person, size: 22, color: Colors.white) : null,
-                      ),
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundColor: Colors.blueAccent,
+                      backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
+                      child: !tieneFoto ? const Icon(Icons.person, size: 22, color: Colors.white) : null,
                     ),
-                    if (mensajesSinLeer == 0 && matchMutuo)
+                    if (mensajesSinLeer > 0)
+                      Positioned(
+                        top: -8, right: -8,
+                        child: Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2)),
+                          child: Text('$mensajesSinLeer', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                      )
+                    else if (matchMutuo)
                       Positioned(
                         bottom: -5, right: -5,
                         child: Container(
@@ -1885,7 +1888,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                           child: const Icon(Icons.favorite, color: Colors.white, size: 12),
                         ),
                       )
-                    else if (mensajesSinLeer == 0 && yoDiLike)
+                    else if (yoDiLike)
                       Positioned(
                         bottom: -5, right: -5,
                         child: Container(
