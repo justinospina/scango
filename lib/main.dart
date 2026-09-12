@@ -11,6 +11,8 @@ import 'package:video_player/video_player.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' as latlng;
 
 bool _mayorDeEdadConfirmado = false;
 
@@ -178,6 +180,7 @@ class _ScanGoAppState extends State<ScanGoApp> with WidgetsBindingObserver {
 
       if (mounted) setState(() => _autenticado = exitoso);
     } catch (e) {
+      debugPrint("Error biometría: $e");
       if (mounted) setState(() => _autenticado = true);
     } finally {
       if (mounted) setState(() => _autenticando = false);
@@ -364,12 +367,17 @@ class _ModalPerfilDetalleState extends State<ModalPerfilDetalle> {
             ElevatedButton.icon(
               onPressed: () async {
                  try {
-                   final res = await Supabase.instance.client.from('solicitudes').insert({'emisor_id': widget.miId, 'receptor_id': widget.perfil['id'], 'estado': 'pendiente', 'emisor_like': yoDiLike}).select().single();
+                   final res = await Supabase.instance.client.from('solicitudes').insert({
+                     'emisor_id': widget.miId,
+                     'receptor_id': widget.perfil['id'],
+                     'estado': 'pendiente',
+                     'emisor_like': true
+                   }).select().single();
                    setState(() => _relacion = res);
-                   if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Solicitud enviada exitosamente'), backgroundColor: Colors.green));
+                   if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Me Gusta enviado'), backgroundColor: Colors.green));
                  } catch(e) {}
               },
-              icon: const Icon(Icons.send), label: const Text('Enviar Solicitud'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
+              icon: const Icon(Icons.favorite), label: const Text('Me Gustas'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
             )
           else if (estadoRelacion == 'pendiente' && !soyEmisor)
              Row(
@@ -421,8 +429,6 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
     deseoCompletado = false;
     _cargarDisponibilidad();
     _iniciarRastreoGPS();
-    
-    _verificarEdadGlobal(context);
     
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       _actualizarUltimaConexion();
@@ -598,16 +604,16 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
     final miId = Supabase.instance.client.auth.currentUser?.id;
 
     final List<Widget> pantallas = [
-      PantallaRadar(miLatitud: _miLatitud, miLongitud: _miLongitud),
       const PantallaMuro(esInvitado: false),
+      PantallaRadar(miLatitud: _miLatitud, miLongitud: _miLongitud),
       const PantallaSolicitudesYChats(),
       const PantallaMiPerfil(),
     ];
 
     String getTitulo() {
       switch (_indiceActual) {
-        case 0: return 'Radar';
-        case 1: return 'Muro de Exploradores';
+        case 0: return 'Muro Público (Index)';
+        case 1: return 'Mapa Interactivo';
         case 2: return 'Chats';
         case 3: return 'Mi Perfil';
         default: return 'ScanGo';
@@ -698,8 +704,8 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
                 type: BottomNavigationBarType.fixed,
                 onTap: (index) => setState(() => _indiceActual = index),
                 items: [
-                  const BottomNavigationBarItem(icon: Icon(Icons.radar), label: 'Radar'),
                   const BottomNavigationBarItem(icon: Icon(Icons.view_day), label: 'Muro'),
+                  const BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Mapa'),
                   BottomNavigationBarItem(
                     icon: Badge(
                       backgroundColor: Colors.red,
@@ -939,7 +945,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                   const SizedBox(height: 15),
                   TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Ingresa tu Edad', border: OutlineInputBorder())),
                   const SizedBox(height: 15),
-                  TextField(controller: _deseoController, decoration: const InputDecoration(labelText: '¿Qué buscas en ScanGo?', border: OutlineInputBorder())),
+                  TextField(controller: _deseoController, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(labelText: '¿Qué buscas en ScanGo?', border: OutlineInputBorder())),
                   const SizedBox(height: 15),
                   DropdownButtonFormField<String>(
                     value: _preferencia,
@@ -1537,7 +1543,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
   bool _esPrimeraCargaSolicitudes = true; 
   
   RangeValues _rangoEdad = const RangeValues(18, 99);
-  double _distanciaMaximaMetros = 40.0; 
+  double _distanciaMaximaMetros = 400.0; 
 
   @override
   void initState() {
@@ -1765,87 +1771,151 @@ class _PantallaRadarState extends State<PantallaRadar> {
     super.dispose();
   }
 
-  Future<void> enviarSolicitud(BuildContext context, String receptorId) async {
-    try {
-      final supabase = Supabase.instance.client;
-      final usuarioActual = supabase.auth.currentUser;
-      if (usuarioActual == null) return;
-      
-      final existentes = await supabase.from('solicitudes').select().or('and(emisor_id.eq.${usuarioActual.id},receptor_id.eq.$receptorId),and(emisor_id.eq.$receptorId,receptor_id.eq.${usuarioActual.id})');
-      if (existentes.isNotEmpty && existentes.first['estado'] != 'rechazada') {
-         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ya existe una conexión con este usuario'), backgroundColor: Colors.orange));
-         return;
+  Widget _construirMapa(BuildContext context, List<Map<String, dynamic>> perfilesCompatibles, String miId, Map<String, dynamic> miPerfil, List<Map<String, dynamic>> misSolicitudes) {
+    final miUbicacion = latlng.LatLng(widget.miLatitud ?? 4.5709, widget.miLongitud ?? -74.2973);
+    final List<Marker> marcadores = [];
+    final List<Polyline> lineasMatch = [];
+
+    marcadores.add(
+      Marker(
+        point: miUbicacion,
+        width: 80,
+        height: 80,
+        child: Container(
+          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.greenAccent, width: 3), boxShadow: [BoxShadow(color: Colors.greenAccent.withOpacity(0.4), blurRadius: 20, spreadRadius: 5)]),
+          child: CircleAvatar(
+            backgroundColor: Colors.black,
+            backgroundImage: miPerfil['foto_url'] != null ? NetworkImage(miPerfil['foto_url']) : null,
+            child: miPerfil['foto_url'] == null ? const Icon(Icons.person, color: Colors.white) : null,
+          ),
+        )
+      ),
+    );
+
+    for (var perfil in perfilesCompatibles) {
+      final latOtro = (perfil['latitud'] as num?)?.toDouble();
+      final lonOtro = (perfil['longitud'] as num?)?.toDouble();
+      if (latOtro == null || lonOtro == null) continue;
+
+      final ubicacionOtro = latlng.LatLng(latOtro, lonOtro);
+      final distMetros = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latOtro, lonOtro);
+
+      final fotoUrl = perfil['foto_url']?.toString();
+      final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+
+      final otroId = perfil['id'];
+      Map<String, dynamic>? relacionExistente;
+      try {
+        relacionExistente = misSolicitudes.firstWhere((s) => (s['emisor_id'] == miId && s['receptor_id'] == otroId) || (s['emisor_id'] == otroId && s['receptor_id'] == miId));
+      } catch (e) {}
+
+      bool yoDiLike = false;
+      bool elDioLike = false;
+      if (relacionExistente != null) {
+        bool soyEmisor = relacionExistente['emisor_id'] == miId;
+        yoDiLike = soyEmisor ? (relacionExistente['emisor_like'] == true) : (relacionExistente['receptor_like'] == true);
+        elDioLike = soyEmisor ? (relacionExistente['receptor_like'] == true) : (relacionExistente['emisor_like'] == true);
+      }
+      bool matchMutuo = yoDiLike && elDioLike;
+
+      if (matchMutuo) {
+        lineasMatch.add(
+          Polyline(
+            points: [miUbicacion, ubicacionOtro],
+            color: Colors.redAccent.withOpacity(0.8),
+            strokeWidth: 4.0,
+          )
+        );
       }
 
-      await supabase.from('solicitudes').insert({'emisor_id': usuarioActual.id, 'receptor_id': receptorId, 'estado': 'pendiente'});
-      
-      HapticFeedback.mediumImpact();
-      _audioPlayer.play(AssetSource('sonidos/envio.mp3')).catchError((_) {});
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Solicitud enviada exitosamente'), backgroundColor: Colors.green));
-    } catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-    }
-  }
-
-  void _mostrarPerfilDetallado(BuildContext context, Map<String, dynamic> perfil, String distanciaTxt, bool esActivo, String estadoRelacion, {String? solicitudId}) {
-    final fotoUrl = perfil['foto_url']?.toString();
-    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
-    final esVerificado = perfil['verificado_biometria'] == true;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.grey[900],
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Stack(
-                children: [
-                  CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
-                  Positioned(right: 0, bottom: 0, child: Container(width: 20, height: 20, decoration: BoxDecoration(color: esActivo ? Colors.greenAccent : Colors.grey, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 3))))
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                  if (esVerificado) ...[
-                    const SizedBox(width: 6),
-                    const Icon(Icons.verified, color: Colors.blueAccent, size: 22),
+      marcadores.add(
+        Marker(
+          point: ubicacionOtro,
+          width: 100,
+          height: 100,
+          child: GestureDetector(
+            onTap: () {
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: Colors.transparent,
+                isScrollControlled: true,
+                builder: (_) => ModalPerfilDetalle(
+                  perfil: perfil, 
+                  distanciaTxt: '📍 A ${distMetros.round()} metros', 
+                  relacionExistenteInit: relacionExistente, 
+                  miId: miId
+                )
+              );
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundColor: Colors.blueAccent,
+                      backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
+                      child: !tieneFoto ? const Icon(Icons.person, size: 22, color: Colors.white) : null,
+                    ),
+                    if (matchMutuo)
+                      Positioned(
+                        bottom: -5, right: -5,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                          child: const Icon(Icons.favorite, color: Colors.white, size: 12),
+                        ),
+                      )
+                    else if (yoDiLike)
+                      Positioned(
+                        bottom: -5, right: -5,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(color: Colors.grey, shape: BoxShape.circle),
+                          child: const Icon(Icons.favorite_border, color: Colors.white, size: 12),
+                        ),
+                      )
                   ],
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(distanciaTxt, style: const TextStyle(fontSize: 14, color: Colors.orangeAccent)),
-              const SizedBox(height: 8),
-              Text('Desea: ${perfil['deseo_actual'] ?? ''}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent), textAlign: TextAlign.center),
-              const SizedBox(height: 24),
-              if (estadoRelacion == 'aceptada') 
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: perfil['id'], receptorNombre: perfil['nombre'], receptorFoto: fotoUrl, solicitudId: solicitudId ?? '')));
-                  },
-                  icon: const Icon(Icons.chat), label: const Text('Abrir Chat'), style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
-                )
-              else if (estadoRelacion == 'ninguna')
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    enviarSolicitud(context, perfil['id']);
-                  },
-                  icon: const Icon(Icons.send), label: const Text('Enviar Solicitud'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
-                )
-              else 
-                const Text('Solicitud pendiente de respuesta', style: TextStyle(color: Colors.orange, fontSize: 16, fontWeight: FontWeight.bold))
-            ],
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.black87, 
+                    borderRadius: BorderRadius.circular(5), 
+                    border: Border.all(color: matchMutuo ? Colors.redAccent : Colors.greenAccent, width: matchMutuo ? 1.5 : 0.5)
+                  ),
+                  child: Text(perfil['nombre'] ?? 'Explorador', style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                ),
+                Text('${distMetros.round()} m', style: const TextStyle(fontSize: 11, color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+              ],
+            ),
           ),
-        );
-      },
+        )
+      );
+    }
+
+    return FlutterMap(
+      options: MapOptions(
+        initialCenter: miUbicacion,
+        initialZoom: 17.0,
+        interactionOptions: InteractionOptions(flags: InteractiveFlag.all),
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', 
+          userAgentPackageName: 'com.scango.app',
+        ),
+        if (lineasMatch.isNotEmpty)
+          PolylineLayer(
+            polylines: lineasMatch,
+          ),
+        MarkerLayer(
+          markers: marcadores,
+        ),
+      ],
     );
   }
 
@@ -1863,174 +1933,59 @@ class _PantallaRadarState extends State<PantallaRadar> {
           child: Column(
             children: [
               Text('Filtrar por edad: ${_rangoEdad.start.round()} a ${_rangoEdad.end.round()} años', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              RangeSlider(
-                values: _rangoEdad,
-                min: 18,
-                max: 99,
-                divisions: 81,
-                activeColor: Colors.greenAccent,
-                labels: RangeLabels('${_rangoEdad.start.round()}', '${_rangoEdad.end.round()}'),
-                onChanged: (RangeValues values) {
-                  setState(() => _rangoEdad = values);
-                },
-              ),
+              RangeSlider(values: _rangoEdad, min: 18, max: 99, divisions: 81, activeColor: Colors.greenAccent, labels: RangeLabels('${_rangoEdad.start.round()}', '${_rangoEdad.end.round()}'), onChanged: (RangeValues values) { setState(() => _rangoEdad = values); }),
               const SizedBox(height: 5),
               Text('Distancia máxima: ${_distanciaMaximaMetros.round()} metros', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              Slider(
-                value: _distanciaMaximaMetros,
-                min: 10,
-                max: 1000,
-                divisions: 99,
-                activeColor: Colors.greenAccent,
-                label: '${_distanciaMaximaMetros.round()} m',
-                onChanged: (val) => setState(() => _distanciaMaximaMetros = val),
-              ),
+              Slider(value: _distanciaMaximaMetros, min: 10, max: 1000, divisions: 99, activeColor: Colors.greenAccent, label: '${_distanciaMaximaMetros.round()} m', onChanged: (val) => setState(() => _distanciaMaximaMetros = val)),
             ],
           ),
         ),
         Expanded(
-          child: StreamBuilder<List<Map<String, dynamic>>>(
-            stream: streamPerfiles,
-            builder: (context, snapshotPerfiles) {
-              if (!snapshotPerfiles.hasData) return const Center(child: CircularProgressIndicator());
-              return StreamBuilder<List<Map<String, dynamic>>>(
-                stream: streamSolicitudes,
-                builder: (context, snapshotSolicitudes) {
-                  if (!snapshotSolicitudes.hasData) return const Center(child: CircularProgressIndicator());
-                  
-                  final todosLosPerfiles = snapshotPerfiles.data!;
-                  final misSolicitudes = snapshotSolicitudes.data!.where((s) => s['emisor_id'] == miId || s['receptor_id'] == miId).toList();
+          child: widget.miLatitud == null || widget.miLongitud == null
+              ? const Center(child: CircularProgressIndicator())
+              : StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']),
+                  builder: (context, snapshotSolicitudes) {
+                    if (!snapshotSolicitudes.hasData) return const Center(child: CircularProgressIndicator());
 
-                  final miPerfil = todosLosPerfiles.firstWhere((p) => p['id'] == miId, orElse: () => {});
-                  final miGenero = miPerfil['genero'] ?? '';
-                  final miPreferencia = miPerfil['preferencia'] ?? 'AMBAS';
+                    return StreamBuilder<List<Map<String, dynamic>>>(
+                      stream: Supabase.instance.client.from('perfiles').stream(primaryKey: ['id']),
+                      builder: (context, snapshotPerfiles) {
+                        if (!snapshotPerfiles.hasData) return const Center(child: CircularProgressIndicator());
+                        
+                        final misSolicitudes = snapshotSolicitudes.data!.where((s) => s['emisor_id'] == miId || s['receptor_id'] == miId).toList();
+                        final todosLosPerfiles = snapshotPerfiles.data!;
+                        final miPerfil = todosLosPerfiles.firstWhere((p) => p['id'] == miId, orElse: () => {});
+                        final miGenero = miPerfil['genero'] ?? '';
+                        final miPreferencia = miPerfil['preferencia'] ?? 'AMBAS';
 
-                  final perfiles = todosLosPerfiles.where((p) {
-                    if (p['id'] == miId || p['ultima_conexion'] == null) return false;
-                    
-                    if (p['disponible'] == false) return false;
+                        final perfilesCompatibles = todosLosPerfiles.where((p) {
+                          if (p['id'] == miId || p['ultima_conexion'] == null || p['disponible'] == false) return false;
+                          final int edadOtro = p['edad'] ?? 18;
+                          if (edadOtro < _rangoEdad.start.round() || edadOtro > _rangoEdad.end.round()) return false;
 
-                    final int edadOtro = p['edad'] ?? 18;
-                    if (edadOtro < _rangoEdad.start.round() || edadOtro > _rangoEdad.end.round()) return false;
-
-                    if (widget.miLatitud != null && widget.miLongitud != null && p['latitud'] != null && p['longitud'] != null) {
-                      final distMetros = Geolocator.distanceBetween(
-                        widget.miLatitud!, widget.miLongitud!, 
-                        (p['latitud'] as num).toDouble(), (p['longitud'] as num).toDouble()
-                      );
-                      if (distMetros > _distanciaMaximaMetros) return false;
-                    } else {
-                      return false; 
-                    }
-
-                    final ultimaConexion = DateTime.parse(p['ultima_conexion']);
-                    if (DateTime.now().toUtc().difference(ultimaConexion).inMinutes > 15) return false;
-
-                    final generoOtro = p['genero'] ?? '';
-                    final prefOtro = p['preferencia'] ?? 'AMBAS';
-
-                    bool yoLeGusto = (prefOtro == 'AMBAS' || prefOtro == miGenero);
-                    bool elMeGusta = (miPreferencia == 'AMBAS' || miPreferencia == generoOtro);
-
-                    return yoLeGusto && elMeGusta;
-                  }).toList();
-                  
-                  if (widget.miLatitud != null && widget.miLongitud != null) {
-                    perfiles.sort((a, b) {
-                      final latA = (a['latitud'] as num?)?.toDouble();
-                      final lonA = (a['longitud'] as num?)?.toDouble();
-                      final latB = (b['latitud'] as num?)?.toDouble();
-                      final lonB = (b['longitud'] as num?)?.toDouble();
-                      if (latA == null || lonA == null) return 1;
-                      if (latB == null || lonB == null) return -1;
-                      final distA = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latA, lonA);
-                      final distB = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, latB, lonB);
-                      return distA.compareTo(distB);
-                    });
-                  }
-
-                  if (perfiles.isEmpty) return const Center(child: Text('No hay exploradores en este rango cerca.', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, color: Colors.grey)));
-                  
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: perfiles.length,
-                    itemBuilder: (context, index) {
-                      final perfil = perfiles[index];
-                      final otroId = perfil['id'];
-                      final fotoUrl = perfil['foto_url']?.toString();
-                      final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
-                      final esVerificado = perfil['verificado_biometria'] == true;
-
-                      String distanciaTxt = '📍 Ubicación desconocida';
-                      if (widget.miLatitud != null && widget.miLongitud != null && perfil['latitud'] != null && perfil['longitud'] != null) {
-                        final distMetros = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, (perfil['latitud'] as num).toDouble(), (perfil['longitud'] as num).toDouble());
-                        distanciaTxt = '📍 A ${distMetros.round()} metros';
-                      }
-
-                      Map<String, dynamic>? relacionExistente;
-                      try {
-                        relacionExistente = misSolicitudes.firstWhere((s) => (s['emisor_id'] == miId && s['receptor_id'] == otroId) || (s['emisor_id'] == otroId && s['receptor_id'] == miId));
-                      } catch (e) {}
-
-                      String estadoRelacion = relacionExistente?['estado'] ?? 'ninguna';
-                      Widget botonAccion;
-                      if (estadoRelacion == 'aceptada') {
-                        botonAccion = IconButton(icon: const Icon(Icons.chat, color: Colors.blueAccent), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: otroId, receptorNombre: perfil['nombre'], receptorFoto: fotoUrl, solicitudId: relacionExistente!['id'].toString()))));
-                      } else if (estadoRelacion == 'pendiente') {
-                        botonAccion = const Icon(Icons.access_time, color: Colors.orange);
-                      } else {
-                        botonAccion = IconButton(
-                          icon: const Icon(Icons.send, color: Colors.greenAccent), 
-                          onPressed: () async {
-                            try {
-                              await Supabase.instance.client.from('solicitudes').insert({'emisor_id': miId, 'receptor_id': otroId, 'estado': 'pendiente'});
-                              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Solicitud enviada exitosamente'), backgroundColor: Colors.green));
-                            } catch(e) {}
+                          if (p['latitud'] != null && p['longitud'] != null) {
+                            final distMetros = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, (p['latitud'] as num).toDouble(), (p['longitud'] as num).toDouble());
+                            if (distMetros > _distanciaMaximaMetros) return false;
+                          } else {
+                            return false; 
                           }
-                        );
-                      }
 
-                      return Card(
-                        color: Colors.grey[900],
-                        margin: const EdgeInsets.only(bottom: 15),
-                        child: ListTile(
-                          onTap: () {
-                            showModalBottomSheet(
-                              context: context,
-                              backgroundColor: Colors.transparent,
-                              isScrollControlled: true,
-                              builder: (_) => ModalPerfilDetalle(perfil: perfil, distanciaTxt: distanciaTxt, relacionExistenteInit: relacionExistente, miId: miId!)
-                            );
-                          },
-                          leading: Stack(
-                            children: [
-                              CircleAvatar(backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, color: Colors.black) : null),
-                              Positioned(right: 0, bottom: 0, child: Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle, border: Border.all(color: Colors.grey[900]!, width: 2))))
-                            ],
-                          ),
-                          title: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('${perfil['nombre']} • ${perfil['edad']} años', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                              if (esVerificado) ...[
-                                const SizedBox(width: 4),
-                                const Icon(Icons.verified, color: Colors.blueAccent, size: 16),
-                              ],
-                            ],
-                          ),
-                          subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text('${perfil['deseo_actual']}', overflow: TextOverflow.ellipsis), 
-                            Text(distanciaTxt, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12))
-                          ]),
-                          trailing: botonAccion,
-                        ),
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          ),
+                          final ultimaConexion = DateTime.parse(p['ultima_conexion']);
+                          if (DateTime.now().toUtc().difference(ultimaConexion).inMinutes > 15) return false;
+
+                          final generoOtro = p['genero'] ?? '';
+                          final prefOtro = p['preferencia'] ?? 'AMBAS';
+                          bool yoLeGusto = (prefOtro == 'AMBAS' || prefOtro == miGenero);
+                          bool elMeGusta = (miPreferencia == 'AMBAS' || miPreferencia == generoOtro);
+                          return yoLeGusto && elMeGusta;
+                        }).toList();
+                        
+                        return _construirMapa(context, perfilesCompatibles, miId!, miPerfil, misSolicitudes);
+                      }
+                    );
+                  }
+                ),
         ),
       ],
     );
@@ -2091,22 +2046,17 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     final ImagePicker picker = ImagePicker();
     final XFile? nuevaFoto = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (nuevaFoto == null) return;
-
     setState(() => _guardando = true);
     try {
       final miId = Supabase.instance.client.auth.currentUser!.id;
       final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      
       if (!kIsWeb) {
         await Supabase.instance.client.storage.from('fotos-perfil').upload(fileName, File(nuevaFoto.path));
       } else {
         await Supabase.instance.client.storage.from('fotos-perfil').uploadBinary(fileName, await nuevaFoto.readAsBytes());
       }
-      
       final nuevaUrl = Supabase.instance.client.storage.from('fotos-perfil').getPublicUrl(fileName);
-
       await Supabase.instance.client.from('perfiles').update({'foto_url': nuevaUrl}).eq('id', miId);
-
       setState(() => _fotoUrl = nuevaUrl);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Foto actualizada'), backgroundColor: Colors.green));
     } catch (e) {
@@ -2126,7 +2076,6 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       return;
     }
     setState(() => _guardando = true);
-
     try {
       final miId = Supabase.instance.client.auth.currentUser!.id;
       await Supabase.instance.client.from('perfiles').upsert({'id': miId, 'nombre': nombre, 'edad': int.parse(edad), 'deseo_actual': deseo, 'genero': _genero, 'preferencia': _preferencia});
@@ -2152,48 +2101,28 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
             child: Stack(
               children: [
                 CircleAvatar(radius: 60, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null, child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.black) : null),
-                Positioned(
-                  bottom: 0, right: 0,
-                  child: Container(
-                    decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle),
-                    padding: const EdgeInsets.all(8),
-                    child: const Icon(Icons.edit, size: 20, color: Colors.white),
-                  ),
-                )
+                Positioned(bottom: 0, right: 0, child: Container(decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle), padding: const EdgeInsets.all(8), child: const Icon(Icons.edit, size: 20, color: Colors.white)))
               ],
             ),
           ),
           if (_esVerificado) ...[
             const SizedBox(height: 10),
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.verified, color: Colors.blueAccent, size: 20),
-                SizedBox(width: 5),
-                Text('Usuario Verificado', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold))
-              ],
-            )
+            const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.verified, color: Colors.blueAccent, size: 20), SizedBox(width: 5), Text('Usuario Verificado', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold))])
           ],
           const SizedBox(height: 25),
           TextField(controller: _nombreController, decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder())),
           const SizedBox(height: 15),
           TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Edad', border: OutlineInputBorder())),
           const SizedBox(height: 15),
-          TextField(controller: _deseoController, decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder())),
-          const SizedBox(height: 15),
-          DropdownButtonFormField<String>(
-            value: _genero,
-            decoration: const InputDecoration(labelText: 'Mi Género', border: OutlineInputBorder()),
-            items: ['MUJER', 'HOMBRE'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
-            onChanged: (value) => setState(() => _genero = value),
+          TextField(
+            controller: _deseoController,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(labelText: '¿Qué deseas actualmente?', border: OutlineInputBorder()),
           ),
           const SizedBox(height: 15),
-          DropdownButtonFormField<String>(
-            value: _preferencia,
-            decoration: const InputDecoration(labelText: 'Preferencia de búsqueda', border: OutlineInputBorder()),
-            items: ['MUJER', 'HOMBRE', 'AMBAS'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
-            onChanged: (value) => setState(() => _preferencia = value),
-          ),
+          DropdownButtonFormField<String>(value: _genero, decoration: const InputDecoration(labelText: 'Mi Género', border: OutlineInputBorder()), items: ['MUJER', 'HOMBRE'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(), onChanged: (value) => setState(() => _genero = value)),
+          const SizedBox(height: 15),
+          DropdownButtonFormField<String>(value: _preferencia, decoration: const InputDecoration(labelText: 'Preferencia de búsqueda', border: OutlineInputBorder()), items: ['MUJER', 'HOMBRE', 'AMBAS'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(), onChanged: (value) => setState(() => _preferencia = value)),
           const SizedBox(height: 30),
           _guardando ? const CircularProgressIndicator() : ElevatedButton.icon(onPressed: _guardarCambios, icon: const Icon(Icons.save), label: const Text('Guardar Cambios'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)))
         ],
@@ -2205,24 +2134,75 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 class PantallaSolicitudesYChats extends StatelessWidget {
   const PantallaSolicitudesYChats({super.key});
 
+  void _mostrarPerfilPendiente(BuildContext context, Map<String, dynamic> perfil, Map<String, dynamic> solicitud) {
+    final fotoUrl = perfil['foto_url']?.toString();
+    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+    final esVerificado = perfil['verificado_biometria'] == true;
+    showModalBottomSheet(
+      context: context, backgroundColor: Colors.grey[900], shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)), if (esVerificado) ...[const SizedBox(width: 6), const Icon(Icons.verified, color: Colors.blueAccent, size: 22)]],
+              ),
+              const SizedBox(height: 8),
+              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent), textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white), onPressed: () async { await Supabase.instance.client.from('solicitudes').update({'estado': 'rechazada'}).eq('id', solicitud['id']); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.close), label: const Text('Rechazar')),
+                  ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white), onPressed: () async { await Supabase.instance.client.from('solicitudes').update({'estado': 'aceptada'}).eq('id', solicitud['id']); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.check), label: const Text('Aceptar')),
+                ],
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _mostrarPerfilRapidoLectura(BuildContext context, Map<String, dynamic> perfil) {
+    final fotoUrl = perfil['foto_url']?.toString();
+    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
+    final esVerificado = perfil['verificado_biometria'] == true;
+    showModalBottomSheet(
+      context: context, backgroundColor: Colors.grey[900], shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
+              const SizedBox(height: 16),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)), if (esVerificado) ...[const SizedBox(width: 6), const Icon(Icons.verified, color: Colors.blueAccent, size: 22)]]),
+              const SizedBox(height: 8),
+              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent), textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              ElevatedButton(onPressed: () => Navigator.pop(context), style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[700], foregroundColor: Colors.white), child: const Text('Cerrar'))
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _eliminarVinculoYCreados(BuildContext context, String solicitudId, String otroId, String miId) async {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text('¿Eliminar conexión?', style: TextStyle(color: Colors.redAccent)),
-        content: const Text('Esto borrará el vínculo y el historial de mensajes permanentemente para ambos usuarios.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
-          ),
-        ],
+        backgroundColor: Colors.grey[900], title: const Text('¿Eliminar conexión?', style: TextStyle(color: Colors.redAccent)), content: const Text('Esto borrará el vínculo y el historial de mensajes permanentemente para ambos usuarios.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar', style: TextStyle(color: Colors.white)))],
       ),
     );
-
     if (confirmar == true) {
       await Supabase.instance.client.from('solicitudes').delete().eq('id', solicitudId);
       await Supabase.instance.client.from('mensajes').delete().or('and(emisor_id.eq.$miId,receptor_id.eq.$otroId),and(emisor_id.eq.$otroId,receptor_id.eq.$miId)');
