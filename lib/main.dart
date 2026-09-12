@@ -1564,7 +1564,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
             final miId = Supabase.instance.client.auth.currentUser?.id;
             
             if (miId == null || nuevoPerfil['id'] == miId) return;
-
             if (nuevoPerfil['disponible'] == false) return;
 
             if (widget.miLatitud != null && widget.miLongitud != null && nuevoPerfil['latitud'] != null && nuevoPerfil['longitud'] != null) {
@@ -1771,7 +1770,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
     super.dispose();
   }
 
-  Widget _construirMapa(BuildContext context, List<Map<String, dynamic>> perfilesCompatibles, String miId, Map<String, dynamic> miPerfil, List<Map<String, dynamic>> misSolicitudes) {
+  Widget _construirMapa(BuildContext context, List<Map<String, dynamic>> perfilesCompatibles, String miId, Map<String, dynamic> miPerfil, List<Map<String, dynamic>> misSolicitudes, List<Map<String, dynamic>> misMensajes) {
     final miUbicacion = latlng.LatLng(widget.miLatitud ?? 4.5709, widget.miLongitud ?? -74.2973);
     final List<Marker> marcadores = [];
     final List<Polyline> lineasMatch = [];
@@ -1817,6 +1816,9 @@ class _PantallaRadarState extends State<PantallaRadar> {
         elDioLike = soyEmisor ? (relacionExistente['receptor_like'] == true) : (relacionExistente['emisor_like'] == true);
       }
       bool matchMutuo = yoDiLike && elDioLike;
+      String estadoRelacion = relacionExistente?['estado'] ?? 'ninguna';
+
+      int mensajesSinLeer = misMensajes.where((m) => m['emisor_id'] == otroId && (m['leido'] == null || m['leido'] == false)).length;
 
       if (matchMutuo) {
         lineasMatch.add(
@@ -1835,17 +1837,26 @@ class _PantallaRadarState extends State<PantallaRadar> {
           height: 100,
           child: GestureDetector(
             onTap: () {
-              showModalBottomSheet(
-                context: context,
-                backgroundColor: Colors.transparent,
-                isScrollControlled: true,
-                builder: (_) => ModalPerfilDetalle(
-                  perfil: perfil, 
-                  distanciaTxt: '📍 A ${distMetros.round()} metros', 
-                  relacionExistenteInit: relacionExistente, 
-                  miId: miId
-                )
-              );
+              if (estadoRelacion == 'aceptada') {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(
+                  receptorId: otroId, 
+                  receptorNombre: perfil['nombre'] ?? 'Explorador', 
+                  receptorFoto: fotoUrl, 
+                  solicitudId: relacionExistente!['id'].toString()
+                )));
+              } else {
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: Colors.transparent,
+                  isScrollControlled: true,
+                  builder: (_) => ModalPerfilDetalle(
+                    perfil: perfil, 
+                    distanciaTxt: '📍 A ${distMetros.round()} metros', 
+                    relacionExistenteInit: relacionExistente, 
+                    miId: miId
+                  )
+                );
+              }
             },
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1853,13 +1864,19 @@ class _PantallaRadarState extends State<PantallaRadar> {
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    CircleAvatar(
-                      radius: 22,
-                      backgroundColor: Colors.blueAccent,
-                      backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
-                      child: !tieneFoto ? const Icon(Icons.person, size: 22, color: Colors.white) : null,
+                    Badge(
+                      isLabelVisible: mensajesSinLeer > 0,
+                      label: Text('$mensajesSinLeer', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                      backgroundColor: Colors.red,
+                      offset: const Offset(4, -4),
+                      child: CircleAvatar(
+                        radius: 22,
+                        backgroundColor: Colors.blueAccent,
+                        backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
+                        child: !tieneFoto ? const Icon(Icons.person, size: 22, color: Colors.white) : null,
+                      ),
                     ),
-                    if (matchMutuo)
+                    if (mensajesSinLeer == 0 && matchMutuo)
                       Positioned(
                         bottom: -5, right: -5,
                         child: Container(
@@ -1868,7 +1885,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                           child: const Icon(Icons.favorite, color: Colors.white, size: 12),
                         ),
                       )
-                    else if (yoDiLike)
+                    else if (mensajesSinLeer == 0 && yoDiLike)
                       Positioned(
                         bottom: -5, right: -5,
                         child: Container(
@@ -1901,7 +1918,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
       options: MapOptions(
         initialCenter: miUbicacion,
         initialZoom: 17.0,
-        interactionOptions: InteractionOptions(flags: InteractiveFlag.all),
+        interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
       ),
       children: [
         TileLayer(
@@ -1924,6 +1941,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
     final miId = Supabase.instance.client.auth.currentUser?.id;
     final streamPerfiles = Supabase.instance.client.from('perfiles').stream(primaryKey: ['id']);
     final streamSolicitudes = Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']);
+    final streamMensajes = Supabase.instance.client.from('mensajes').stream(primaryKey: ['id']);
 
     return Column(
       children: [
@@ -1944,44 +1962,52 @@ class _PantallaRadarState extends State<PantallaRadar> {
           child: widget.miLatitud == null || widget.miLongitud == null
               ? const Center(child: CircularProgressIndicator())
               : StreamBuilder<List<Map<String, dynamic>>>(
-                  stream: Supabase.instance.client.from('solicitudes').stream(primaryKey: ['id']),
+                  stream: streamSolicitudes,
                   builder: (context, snapshotSolicitudes) {
                     if (!snapshotSolicitudes.hasData) return const Center(child: CircularProgressIndicator());
 
                     return StreamBuilder<List<Map<String, dynamic>>>(
-                      stream: Supabase.instance.client.from('perfiles').stream(primaryKey: ['id']),
-                      builder: (context, snapshotPerfiles) {
-                        if (!snapshotPerfiles.hasData) return const Center(child: CircularProgressIndicator());
-                        
-                        final misSolicitudes = snapshotSolicitudes.data!.where((s) => s['emisor_id'] == miId || s['receptor_id'] == miId).toList();
-                        final todosLosPerfiles = snapshotPerfiles.data!;
-                        final miPerfil = todosLosPerfiles.firstWhere((p) => p['id'] == miId, orElse: () => {});
-                        final miGenero = miPerfil['genero'] ?? '';
-                        final miPreferencia = miPerfil['preferencia'] ?? 'AMBAS';
+                      stream: streamMensajes,
+                      builder: (context, snapshotMensajes) {
+                        if (!snapshotMensajes.hasData) return const Center(child: CircularProgressIndicator());
 
-                        final perfilesCompatibles = todosLosPerfiles.where((p) {
-                          if (p['id'] == miId || p['ultima_conexion'] == null || p['disponible'] == false) return false;
-                          final int edadOtro = p['edad'] ?? 18;
-                          if (edadOtro < _rangoEdad.start.round() || edadOtro > _rangoEdad.end.round()) return false;
+                        return StreamBuilder<List<Map<String, dynamic>>>(
+                          stream: streamPerfiles,
+                          builder: (context, snapshotPerfiles) {
+                            if (!snapshotPerfiles.hasData) return const Center(child: CircularProgressIndicator());
+                            
+                            final misSolicitudes = snapshotSolicitudes.data!.where((s) => s['emisor_id'] == miId || s['receptor_id'] == miId).toList();
+                            final misMensajes = snapshotMensajes.data!.where((m) => m['receptor_id'] == miId).toList();
+                            final todosLosPerfiles = snapshotPerfiles.data!;
+                            final miPerfil = todosLosPerfiles.firstWhere((p) => p['id'] == miId, orElse: () => {});
+                            final miGenero = miPerfil['genero'] ?? '';
+                            final miPreferencia = miPerfil['preferencia'] ?? 'AMBAS';
 
-                          if (p['latitud'] != null && p['longitud'] != null) {
-                            final distMetros = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, (p['latitud'] as num).toDouble(), (p['longitud'] as num).toDouble());
-                            if (distMetros > _distanciaMaximaMetros) return false;
-                          } else {
-                            return false; 
+                            final perfilesCompatibles = todosLosPerfiles.where((p) {
+                              if (p['id'] == miId || p['ultima_conexion'] == null || p['disponible'] == false) return false;
+                              final int edadOtro = p['edad'] ?? 18;
+                              if (edadOtro < _rangoEdad.start.round() || edadOtro > _rangoEdad.end.round()) return false;
+
+                              if (p['latitud'] != null && p['longitud'] != null) {
+                                final distMetros = Geolocator.distanceBetween(widget.miLatitud!, widget.miLongitud!, (p['latitud'] as num).toDouble(), (p['longitud'] as num).toDouble());
+                                if (distMetros > _distanciaMaximaMetros) return false;
+                              } else {
+                                return false; 
+                              }
+
+                              final ultimaConexion = DateTime.parse(p['ultima_conexion']);
+                              if (DateTime.now().toUtc().difference(ultimaConexion).inMinutes > 15) return false;
+
+                              final generoOtro = p['genero'] ?? '';
+                              final prefOtro = p['preferencia'] ?? 'AMBAS';
+                              bool yoLeGusto = (prefOtro == 'AMBAS' || prefOtro == miGenero);
+                              bool elMeGusta = (miPreferencia == 'AMBAS' || miPreferencia == generoOtro);
+                              return yoLeGusto && elMeGusta;
+                            }).toList();
+                            
+                            return _construirMapa(context, perfilesCompatibles, miId!, miPerfil, misSolicitudes, misMensajes);
                           }
-
-                          final ultimaConexion = DateTime.parse(p['ultima_conexion']);
-                          if (DateTime.now().toUtc().difference(ultimaConexion).inMinutes > 15) return false;
-
-                          final generoOtro = p['genero'] ?? '';
-                          final prefOtro = p['preferencia'] ?? 'AMBAS';
-                          bool yoLeGusto = (prefOtro == 'AMBAS' || prefOtro == miGenero);
-                          bool elMeGusta = (miPreferencia == 'AMBAS' || miPreferencia == generoOtro);
-                          return yoLeGusto && elMeGusta;
-                        }).toList();
-                        
-                        return _construirMapa(context, perfilesCompatibles, miId!, miPerfil, misSolicitudes);
+                        );
                       }
                     );
                   }
