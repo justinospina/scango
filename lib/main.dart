@@ -58,6 +58,59 @@ Future<bool> _verificarRostroUnicoIA(XFile foto) async {
   }
 }
 
+/// [VERIFICACIÓN CONTINUA]: Compara una selfie en tiempo real contra la foto de perfil
+Future<bool> _verificarSelfieContraPerfil(String? miFotoUrl, XFile selfieTiempoReal, Function(String) onProgress) async {
+  if (miFotoUrl == null || miFotoUrl.isEmpty) return false;
+
+  const String apiKey = 'TU_API_KEY_AQUI'; 
+  const String apiSecret = 'TU_API_SECRET_AQUI';
+  const String apiUrl = 'https://api-us.faceplusplus.com/facepp/v3/compare';
+
+  try {
+    onProgress('👁️ Analizando tu rostro en tiempo real...');
+    await Future.delayed(const Duration(milliseconds: 500)); 
+    
+    onProgress('🧠 Comparando con tu foto de perfil...');
+    
+    var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
+    request.fields['api_key'] = apiKey;
+    request.fields['api_secret'] = apiSecret;
+    request.fields['image_url1'] = miFotoUrl; // Verdad base: Foto del perfil
+    request.files.add(await http.MultipartFile.fromPath('image_file2', selfieTiempoReal.path)); // Selfie tomada ahora
+
+    var response = await request.send();
+    
+    if (response.statusCode == 200) {
+      var responseData = await response.stream.bytesToString();
+      var jsonResult = jsonDecode(responseData);
+      
+      if (jsonResult['confidence'] != null) {
+        double porcentajeSimilitud = (jsonResult['confidence'] as num).toDouble();
+        
+        // Umbral de 80% para confirmar identidad
+        if (porcentajeSimilitud < 80.0) {
+          debugPrint('IA Rechazó la identidad. Similitud: $porcentajeSimilitud%');
+          return false; 
+        }
+      } else {
+        debugPrint('IA No detectó rostros en la selfie en tiempo real.');
+        return false; 
+      }
+    } else {
+      debugPrint('Error de comunicación con la API de IA');
+      return false;
+    }
+    
+    onProgress('✅ ¡Identidad confirmada!');
+    await Future.delayed(const Duration(milliseconds: 800));
+    return true; 
+    
+  } catch (e) {
+    debugPrint('Error procesando biometría: $e');
+    return false;
+  }
+}
+
 // ==================== LIBRERÍA DE DATOS ====================
 class ColombiaData {
   static const List<String> categorias = [
@@ -886,21 +939,19 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   }
 
   Future<void> procesarFoto() async {
-    // 1. FORZAR CÁMARA FRONTAL EN TIEMPO REAL (Bloquea la galería)
+    // 1. FORZAR CÁMARA FRONTAL EN TIEMPO REAL
     final XFile? foto = await _picker.pickImage(
       source: ImageSource.camera, 
-      preferredCameraDevice: CameraDevice.front, // Obliga cámara selfie
+      preferredCameraDevice: CameraDevice.front, 
       maxWidth: 600,
       imageQuality: 80,
     );
     
     if (foto == null) return;
     
-    setState(() { 
-      _procesandoIA = true; 
-    });
+    setState(() { _procesandoIA = true; });
 
-    // 2. VERIFICAR QUE ES UN ROSTRO REAL
+    // 2. VERIFICAR QUE ES UN ROSTRO REAL (Req 1)
     bool esRostroValido = await _verificarRostroUnicoIA(foto);
 
     if (!esRostroValido) {
@@ -914,10 +965,9 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
           )
         );
       }
-      return; // Bloquea el proceso
+      return; 
     }
 
-    // 3. SI PASA LA IA, LO DEJA REGISTRARSE
     setState(() {
       _fotoPerfil = foto;
       _procesandoIA = false;
@@ -1225,64 +1275,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
     }
   }
 
-  // ==================== PETICIÓN REAL A FACE++ (COMPARE) ====================
-  Future<bool> _verificarRostrosConIA(String? miFotoUrl, List<XFile> fotosNuevas, Function(String) onProgress) async {
-    if (miFotoUrl == null || miFotoUrl.isEmpty) return false;
-
-    // REEMPLAZA CON TUS LLAVES REALES DE FACE++
-    const String apiKey = 'TU_API_KEY_AQUI'; 
-    const String apiSecret = 'TU_API_SECRET_AQUI';
-    const String apiUrl = 'https://api-us.faceplusplus.com/facepp/v3/compare';
-
-    try {
-      for (int i = 0; i < fotosNuevas.length; i++) {
-        final fotoNueva = fotosNuevas[i];
-        
-        onProgress('👁️ Escaneando rostro en foto ${i + 1} de ${fotosNuevas.length}...');
-        await Future.delayed(const Duration(milliseconds: 500)); // Pequeña pausa UX
-        
-        onProgress('🧠 Comparando biometría facial ${i + 1}...');
-        
-        var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
-        request.fields['api_key'] = apiKey;
-        request.fields['api_secret'] = apiSecret;
-        request.fields['image_url1'] = miFotoUrl; // Verdad base: Foto del perfil
-        request.files.add(await http.MultipartFile.fromPath('image_file2', fotoNueva.path)); // Foto a publicar
-
-        var response = await request.send();
-        
-        if (response.statusCode == 200) {
-          var responseData = await response.stream.bytesToString();
-          var jsonResult = jsonDecode(responseData);
-          
-          if (jsonResult['confidence'] != null) {
-            double porcentajeSimilitud = (jsonResult['confidence'] as num).toDouble();
-            
-            // Umbral de 80% para confirmar que es la misma persona
-            if (porcentajeSimilitud < 80.0) {
-              debugPrint('IA Rechazó la foto. Similitud: $porcentajeSimilitud%');
-              return false; 
-            }
-          } else {
-            debugPrint('IA No detectó rostros para comparar en esta foto.');
-            return false; 
-          }
-        } else {
-          debugPrint('Error de comunicación con la API de IA');
-          return false;
-        }
-      }
-      
-      onProgress('✅ ¡Identidad confirmada por IA!');
-      await Future.delayed(const Duration(milliseconds: 800));
-      return true; 
-      
-    } catch (e) {
-      debugPrint('Error procesando biometría: $e');
-      return false;
-    }
-  }
-
+  // ==================== NUEVO FLUJO DE CREAR PUBLICACIÓN ====================
   Future<void> _abrirCrearPublicacion() async {
     final miId = Supabase.instance.client.auth.currentUser?.id;
     if (miId == null) return;
@@ -1291,12 +1284,14 @@ class _PantallaMuroState extends State<PantallaMuro> {
     final whatsappController = TextEditingController();
     
     List<Map<String, dynamic>> mediaItems = [];
-    bool procesando = false;
-    String estadoProceso = 'Iniciando publicación...'; 
     
     String categoriaSel = ColombiaData.categorias.first;
     String? depSel;
     String? ciuSel;
+
+    // ESTADO DEL MODAL (Req 2 y 3)
+    int pasoModal = 0; // 0 = Guía, 1 = Procesando IA, 2 = Formulario
+    String estadoProcesoIA = '';
 
     await showModalBottomSheet(
       context: context,
@@ -1307,6 +1302,44 @@ class _PantallaMuroState extends State<PantallaMuro> {
         return StatefulBuilder(
           builder: (context, setStateModal) {
             
+            // Función para iniciar validación en vivo (Req 2)
+            Future<void> iniciarVerificacionVivo() async {
+              final XFile? selfieTiempoReal = await _picker.pickImage(
+                source: ImageSource.camera, 
+                preferredCameraDevice: CameraDevice.front, // Forzamos selfie
+                imageQuality: 80,
+              );
+              
+              if (selfieTiempoReal == null) return;
+              
+              setStateModal(() {
+                pasoModal = 1;
+                estadoProcesoIA = 'Conectando con la IA...';
+              });
+
+              final perfilData = await Supabase.instance.client.from('perfiles').select('foto_url').eq('id', miId).maybeSingle();
+              final miFotoUrl = perfilData?['foto_url'];
+
+              bool identidadConfirmada = await _verificarSelfieContraPerfil(miFotoUrl, selfieTiempoReal, (mensajeIA) {
+                setStateModal(() => estadoProcesoIA = mensajeIA);
+              });
+
+              if (identidadConfirmada) {
+                setStateModal(() => pasoModal = 2); // Pasamos al formulario
+              } else {
+                setStateModal(() => pasoModal = 0); // Devolvemos a la guía
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('❌ La selfie no coincide con tu foto de perfil. Verificación denegada.'), 
+                      backgroundColor: Colors.red,
+                      duration: Duration(seconds: 4),
+                    )
+                  );
+                }
+              }
+            }
+
             void agregarMedia(XFile archivo, String tipo) {
               if (mediaItems.length >= 5) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Puedes agregar máximo 5 archivos por publicación.')));
@@ -1315,7 +1348,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
               setStateModal(() => mediaItems.add({'file': archivo, 'tipo': tipo}));
             }
 
-            Future<void> publicar() async {
+            Future<void> publicarFinal() async {
               final texto = txtController.text.trim();
               if ((texto.isEmpty && mediaItems.isEmpty) || depSel == null || ciuSel == null) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Agrega contenido, departamento y ciudad para publicar')));
@@ -1329,34 +1362,11 @@ class _PantallaMuroState extends State<PantallaMuro> {
               }
               
               setStateModal(() {
-                procesando = true;
-                estadoProceso = 'Preparando imágenes...';
+                pasoModal = 1;
+                estadoProcesoIA = 'Subiendo archivos al servidor...';
               });
               
               try {
-                final perfilData = await Supabase.instance.client.from('perfiles').select('foto_url').eq('id', miId).maybeSingle();
-                final miFotoUrl = perfilData?['foto_url'];
-                final fotos = mediaItems.where((m) => m['tipo'] == 'img').map((m) => m['file'] as XFile).toList();
-
-                // LLAMAMOS A LA IA DE COMPARACIÓN Y ACTUALIZAMOS EL TEXTO EN TIEMPO REAL
-                bool verificadoPorIA = await _verificarRostrosConIA(miFotoUrl, fotos, (String mensajeIA) {
-                  setStateModal(() => estadoProceso = mensajeIA);
-                });
-
-                if (!verificadoPorIA) {
-                  setStateModal(() => procesando = false);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('❌ Verificación fallida: Las fotos no coinciden con tu perfil o no hay un rostro claro.'), 
-                      backgroundColor: Colors.red,
-                      duration: Duration(seconds: 4),
-                    )
-                  );
-                  return;
-                }
-
-                setStateModal(() => estadoProceso = 'Subiendo archivos al servidor...');
-                
                 List<Map<String, String>> urlsSubidas = [];
                 for (var i = 0; i < mediaItems.length; i++) {
                   final item = mediaItems[i];
@@ -1375,7 +1385,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
                   urlsSubidas.add({'url': urlFinal, 'tipo': tipo});
                 }
 
-                setStateModal(() => estadoProceso = 'Finalizando publicación...');
+                setStateModal(() => estadoProcesoIA = 'Finalizando publicación...');
                 String? mediaUrlsJson = urlsSubidas.isNotEmpty ? jsonEncode(urlsSubidas) : null;
 
                 await Supabase.instance.client.from('publicaciones').insert({
@@ -1391,13 +1401,13 @@ class _PantallaMuroState extends State<PantallaMuro> {
 
                 if (context.mounted) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Publicado (Verificado por IA)'), backgroundColor: Colors.green));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Publicación exitosa'), backgroundColor: Colors.green));
                   setState(() => _paginaActual = 0);
                   _cargarPublicaciones();
                 }
               } catch (e) {
                 if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-                setStateModal(() => procesando = false);
+                setStateModal(() => pasoModal = 2); // Devolver al form si hay error de subida
               }
             }
 
@@ -1408,125 +1418,175 @@ class _PantallaMuroState extends State<PantallaMuro> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('Nueva Publicación', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
-                    const SizedBox(height: 15),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      value: categoriaSel,
-                      decoration: InputDecoration(labelText: 'Categoría', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), isDense: true),
-                      items: ColombiaData.categorias.map((c) => DropdownMenuItem(value: c, child: _construirTextoCategoria(c))).toList(),
-                      onChanged: (val) => setStateModal(() => categoriaSel = val!),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _construirBuscadorDinamico(
-                            label: 'Departamento',
-                            opciones: ColombiaData.ubicaciones.keys,
-                            onSelected: (val) => setStateModal(() { depSel = val; ciuSel = null; }),
-                            onCleared: () => setStateModal(() { depSel = null; ciuSel = null; }),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _construirBuscadorDinamico(
-                            label: 'Ciudad',
-                            opciones: depSel == null ? [] : ColombiaData.ubicaciones[depSel]!,
-                            onSelected: (val) => setStateModal(() => ciuSel = val),
-                            onCleared: () => setStateModal(() => ciuSel = null),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: txtController,
-                      maxLines: 2,
-                      decoration: InputDecoration(hintText: '¿Qué quieres compartir?', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: whatsappController,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(
-                        hintText: 'Tu WhatsApp (Opcional)', 
-                        prefixIcon: const Icon(Icons.phone, color: Colors.greenAccent),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        isDense: true,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
                     
-                    if (mediaItems.isNotEmpty)
-                      SizedBox(
-                        height: 90,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: mediaItems.length,
-                          itemBuilder: (context, index) {
-                            final item = mediaItems[index];
-                            return Container(
-                              width: 80,
-                              margin: const EdgeInsets.only(right: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.grey[800],
-                                borderRadius: BorderRadius.circular(8)
-                              ),
-                              child: Stack(
-                                children: [
-                                  Center(child: Icon(item['tipo'] == 'vid' ? Icons.videocam : Icons.image, size: 40, color: Colors.greenAccent)),
-                                  Positioned(
-                                    right: -5, top: -5,
-                                    child: IconButton(
-                                      icon: const Icon(Icons.cancel, color: Colors.red),
-                                      onPressed: () => setStateModal(() => mediaItems.removeAt(index)),
-                                    )
-                                  )
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        IconButton(icon: const Icon(Icons.camera_alt), color: Colors.blueAccent, onPressed: () async {
-                          final f = await _picker.pickImage(source: ImageSource.camera, imageQuality: 70);
-                          if (f != null) agregarMedia(f, 'img');
-                        }),
-                        IconButton(icon: const Icon(Icons.image), color: Colors.blueAccent, onPressed: () async {
-                          final f = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-                          if (f != null) agregarMedia(f, 'img');
-                        }),
-                        IconButton(icon: const Icon(Icons.videocam), color: Colors.blueAccent, onPressed: () async {
-                          final f = await _picker.pickVideo(source: ImageSource.camera);
-                          if (f != null) agregarMedia(f, 'vid');
-                        }),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    
-                    procesando
-                      ? Column(
+                    // ===================================
+                    // PASO 0: GUÍA (Req 3)
+                    // ===================================
+                    if (pasoModal == 0) ...[
+                      const Icon(Icons.shield, size: 60, color: Colors.blueAccent),
+                      const SizedBox(height: 10),
+                      const Text('Publicación Segura', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                      const SizedBox(height: 20),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(12)),
+                        child: const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const CircularProgressIndicator(color: Colors.greenAccent),
-                            const SizedBox(height: 12),
-                            Text(
-                              estadoProceso, 
-                              style: const TextStyle(color: Colors.greenAccent, fontSize: 14, fontWeight: FontWeight.bold),
-                              textAlign: TextAlign.center,
-                            )
+                            Text('Pasos para publicar:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent, fontSize: 16)),
+                            SizedBox(height: 10),
+                            Text('1️⃣ Tómate una Selfie: Abriremos tu cámara para confirmar que eres tú. (Esta foto es solo para la IA, no se publicará).', style: TextStyle(color: Colors.white70)),
+                            SizedBox(height: 10),
+                            Text('2️⃣ IA Verifica: El sistema comparará tu rostro en vivo contra tu foto de perfil.', style: TextStyle(color: Colors.white70)),
+                            SizedBox(height: 10),
+                            Text('3️⃣ Sube tu contenido: Una vez confirmado, podrás elegir las fotos y videos (hasta 5) que realmente quieres publicar en el muro.', style: TextStyle(color: Colors.white70)),
                           ],
-                        )
-                      : ElevatedButton(
-                          onPressed: publicar,
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
-                          child: Text('Publicar Ahora (${mediaItems.length}/5)'),
                         ),
-                    const SizedBox(height: 20),
+                      ),
+                      const SizedBox(height: 25),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.camera_front),
+                        label: const Text('Tomar Selfie y Verificar'),
+                        onPressed: iniciarVerificacionVivo,
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // ===================================
+                    // PASO 1: PROCESANDO IA
+                    // ===================================
+                    if (pasoModal == 1) ...[
+                      const SizedBox(height: 40),
+                      const CircularProgressIndicator(color: Colors.greenAccent),
+                      const SizedBox(height: 20),
+                      Text(
+                        estadoProcesoIA,
+                        style: const TextStyle(color: Colors.greenAccent, fontSize: 16, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 40),
+                    ],
+
+                    // ===================================
+                    // PASO 2: FORMULARIO DE PUBLICACIÓN
+                    // ===================================
+                    if (pasoModal == 2) ...[
+                      const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.verified, color: Colors.blueAccent),
+                          SizedBox(width: 5),
+                          Text('Identidad Verificada', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                        ],
+                      ),
+                      const SizedBox(height: 15),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: categoriaSel,
+                        decoration: InputDecoration(labelText: 'Categoría', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), isDense: true),
+                        items: ColombiaData.categorias.map((c) => DropdownMenuItem(value: c, child: _construirTextoCategoria(c))).toList(),
+                        onChanged: (val) => setStateModal(() => categoriaSel = val!),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _construirBuscadorDinamico(
+                              label: 'Departamento',
+                              opciones: ColombiaData.ubicaciones.keys,
+                              onSelected: (val) => setStateModal(() { depSel = val; ciuSel = null; }),
+                              onCleared: () => setStateModal(() { depSel = null; ciuSel = null; }),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _construirBuscadorDinamico(
+                              label: 'Ciudad',
+                              opciones: depSel == null ? [] : ColombiaData.ubicaciones[depSel]!,
+                              onSelected: (val) => setStateModal(() => ciuSel = val),
+                              onCleared: () => setStateModal(() => ciuSel = null),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: txtController,
+                        maxLines: 2,
+                        decoration: InputDecoration(hintText: '¿Qué quieres compartir?', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: whatsappController,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          hintText: 'Tu WhatsApp (Opcional)', 
+                          prefixIcon: const Icon(Icons.phone, color: Colors.greenAccent),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          isDense: true,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      
+                      if (mediaItems.isNotEmpty)
+                        SizedBox(
+                          height: 90,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: mediaItems.length,
+                            itemBuilder: (context, index) {
+                              final item = mediaItems[index];
+                              return Container(
+                                width: 80,
+                                margin: const EdgeInsets.only(right: 10),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[800],
+                                  borderRadius: BorderRadius.circular(8)
+                                ),
+                                child: Stack(
+                                  children: [
+                                    Center(child: Icon(item['tipo'] == 'vid' ? Icons.videocam : Icons.image, size: 40, color: Colors.greenAccent)),
+                                    Positioned(
+                                      right: -5, top: -5,
+                                      child: IconButton(
+                                        icon: const Icon(Icons.cancel, color: Colors.red),
+                                        onPressed: () => setStateModal(() => mediaItems.removeAt(index)),
+                                      )
+                                    )
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          IconButton(icon: const Icon(Icons.camera_alt), color: Colors.blueAccent, onPressed: () async {
+                            final f = await _picker.pickImage(source: ImageSource.camera, imageQuality: 70);
+                            if (f != null) agregarMedia(f, 'img');
+                          }),
+                          IconButton(icon: const Icon(Icons.image), color: Colors.blueAccent, onPressed: () async {
+                            final f = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+                            if (f != null) agregarMedia(f, 'img');
+                          }),
+                          IconButton(icon: const Icon(Icons.videocam), color: Colors.blueAccent, onPressed: () async {
+                            final f = await _picker.pickVideo(source: ImageSource.camera);
+                            if (f != null) agregarMedia(f, 'vid');
+                          }),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      
+                      ElevatedButton(
+                        onPressed: publicarFinal,
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
+                        child: Text('Publicar Muro (${mediaItems.length}/5)'),
+                      ),
+                      const SizedBox(height: 20),
+                    ]
                   ],
                 ),
               ),
