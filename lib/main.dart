@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as latlng;
+import 'package:http/http.dart' as http;
 
 bool _mayorDeEdadConfirmado = false;
 
@@ -1153,19 +1154,64 @@ class _PantallaMuroState extends State<PantallaMuro> {
   }
 
   // ==================== SIMULADOR IA ====================
-  Future<bool> _verificarRostrosConIA(String? miFotoUrl, List<XFile> fotosNuevas) async {
-    if (miFotoUrl == null || miFotoUrl.isEmpty) return false;
+Future<bool> _verificarRostrosConIA(String? miFotoUrl, List<XFile> fotosNuevas) async {
+  if (miFotoUrl == null || miFotoUrl.isEmpty) return false;
 
-    // NOTA PARA EL DESARROLLADOR: 
-    // Aquí debes llamar a tu backend que integre AWS Rekognition, Face API, o similar.
-    // Simulo la llamada y la validación correcta.
-    await Future.delayed(const Duration(seconds: 3)); // Simular espera del servidor
+  // IMPORTANTE: Crea una cuenta gratuita en console.faceplusplus.com para obtener tus llaves
+  const String apiKey = 'TU_API_KEY_AQUI'; 
+  const String apiSecret = 'TU_API_SECRET_AQUI';
+  const String apiUrl = 'https://api-us.faceplusplus.com/facepp/v3/compare';
+
+  try {
+    // Analizamos cada foto nueva que el usuario intenta subir
+    for (var fotoNueva in fotosNuevas) {
+      var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
+      
+      // Credenciales de la API
+      request.fields['api_key'] = apiKey;
+      request.fields['api_secret'] = apiSecret;
+      
+      // Foto 1: La foto de perfil actual del usuario (desde la URL de Supabase)
+      request.fields['image_url1'] = miFotoUrl; 
+
+      // Foto 2: La foto nueva seleccionada de la galería o cámara
+      request.files.add(await http.MultipartFile.fromPath('image_file2', fotoNueva.path));
+
+      // Enviamos la petición a la IA
+      var response = await request.send();
+      
+      if (response.statusCode == 200) {
+        var responseData = await response.stream.bytesToString();
+        var jsonResult = jsonDecode(responseData);
+        
+        // Verificamos si la IA encontró rostros y generó un porcentaje de coincidencia
+        if (jsonResult['confidence'] != null) {
+          double porcentajeSimilitud = jsonResult['confidence'];
+          
+          // Umbral de seguridad: 80% de similitud para confirmar que es la misma persona
+          if (porcentajeSimilitud < 80.0) {
+            debugPrint('IA Rechazó la foto. Similitud: $porcentajeSimilitud%');
+            return false; // Bloquea inmediatamente si una foto no es del usuario
+          }
+        } else {
+          // Si la IA no detecta ningún rostro humano en la foto (ej. una foto de un paisaje)
+          debugPrint('IA No detectó rostros para comparar.');
+          return false; 
+        }
+      } else {
+        debugPrint('Error de comunicación con la API de IA');
+        return false;
+      }
+    }
     
-    // Cambia esto a false para probar el caso en que la IA rechaza el post
-    bool matchIAEncontrado = true; 
+    // Si el ciclo termina sin retornar false, significa que TODAS las fotos coinciden
+    return true; 
     
-    return matchIAEncontrado;
+  } catch (e) {
+    debugPrint('Error procesando biometría: $e');
+    return false;
   }
+}
 
   Future<void> _abrirCrearPublicacion() async {
     final miId = Supabase.instance.client.auth.currentUser?.id;
