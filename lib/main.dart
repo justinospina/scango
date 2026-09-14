@@ -20,7 +20,6 @@ bool _mayorDeEdadConfirmado = false;
 
 // ==================== FUNCIONES GLOBALES DE INTELIGENCIA ARTIFICIAL ====================
 
-/// [VERDAD BASE]: Valida que en la foto (selfie) haya exactamente UN rostro humano.
 /// [VERDAD BASE]: Valida un solo rostro y detecta el género con IA.
 Future<Map<String, dynamic>> _analizarRostroIA(XFile foto) async {
   // REEMPLAZA CON TUS LLAVES REALES DE FACE++
@@ -32,7 +31,6 @@ Future<Map<String, dynamic>> _analizarRostroIA(XFile foto) async {
     var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
     request.fields['api_key'] = apiKey;
     request.fields['api_secret'] = apiSecret;
-    // NUEVO: Pedimos a la IA que nos devuelva el análisis de género
     request.fields['return_attributes'] = 'gender';
     request.files.add(await http.MultipartFile.fromPath('image_file', foto.path));
 
@@ -44,10 +42,8 @@ Future<Map<String, dynamic>> _analizarRostroIA(XFile foto) async {
       if (jsonResult['faces'] != null) {
         List rostros = jsonResult['faces'];
         if (rostros.length == 1) {
-          // Extraemos el género y lo traducimos
           String generoApi = rostros[0]['attributes']['gender']['value'];
           String generoTraducido = generoApi.toLowerCase() == 'female' ? 'MUJER' : 'HOMBRE';
-          
           return {'valido': true, 'genero': generoTraducido};
         } else if (rostros.isEmpty) {
           return {'valido': false, 'mensaje': '❌ IA rechazada: No se detectó ningún rostro humano.'};
@@ -73,15 +69,11 @@ Future<bool> _verificarSelfieContraPerfil(String? miFotoUrl, XFile selfieTiempoR
 
   try {
     onProgress('👁️ Analizando tu rostro en tiempo real...');
-    await Future.delayed(const Duration(milliseconds: 500)); 
-    
-    onProgress('🧠 Comparando con tu foto de perfil...');
-    
     var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
     request.fields['api_key'] = apiKey;
     request.fields['api_secret'] = apiSecret;
     request.fields['image_url1'] = miFotoUrl; // Verdad base: Foto del perfil
-    request.files.add(await http.MultipartFile.fromPath('image_file2', selfieTiempoReal.path)); // Selfie tomada ahora
+    request.files.add(await http.MultipartFile.fromPath('image_file2', selfieTiempoReal.path)); 
 
     var response = await request.send();
     
@@ -98,16 +90,13 @@ Future<bool> _verificarSelfieContraPerfil(String? miFotoUrl, XFile selfieTiempoR
           return false; 
         }
       } else {
-        debugPrint('IA No detectó rostros en la selfie en tiempo real.');
         return false; 
       }
     } else {
-      debugPrint('Error de comunicación con la API de IA');
       return false;
     }
     
     onProgress('✅ ¡Identidad confirmada!');
-    await Future.delayed(const Duration(milliseconds: 800));
     return true; 
     
   } catch (e) {
@@ -249,7 +238,7 @@ class _ScanGoAppState extends State<ScanGoApp> with WidgetsBindingObserver {
     }
   }
 
-Future<void> _solicitarBiometria() async {
+  Future<void> _solicitarBiometria() async {
     if (Supabase.instance.client.auth.currentSession == null) return;
     if (_autenticando) return;
 
@@ -271,8 +260,7 @@ Future<void> _solicitarBiometria() async {
         localizedReason: 'Desbloquea ScanGo para continuar',
       );
 
-      // AQUÍ ELIMINAMOS LA ACTUALIZACIÓN A LA BASE DE DATOS.
-      // El desbloqueo local (huella) solo da acceso a la app, no otorga la insignia azul.
+      // Desbloqueo local, no modifica verificado_biometria
       if (mounted) setState(() => _autenticado = exitoso);
     } catch (e) {
       debugPrint("Error biometría: $e");
@@ -938,8 +926,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     );
   }
 
-Future<void> procesarFoto() async {
-    // 1. FORZAR CÁMARA FRONTAL EN TIEMPO REAL
+  Future<void> procesarFoto() async {
     final XFile? foto = await _picker.pickImage(
       source: ImageSource.camera, 
       preferredCameraDevice: CameraDevice.front, 
@@ -951,7 +938,6 @@ Future<void> procesarFoto() async {
     
     setState(() { _procesandoIA = true; });
 
-    // 2. VERIFICAR ROSTRO Y OBTENER GÉNERO CON IA
     Map<String, dynamic> analisis = await _analizarRostroIA(foto);
 
     if (analisis['valido'] == false) {
@@ -968,11 +954,10 @@ Future<void> procesarFoto() async {
       return; 
     }
 
-    // 3. ASIGNAR GÉNERO DINÁMICO
     setState(() {
       _fotoPerfil = foto;
       _procesandoIA = false;
-      _generoDetectado = analisis['genero']; // Asigna "MUJER" u "HOMBRE" según lo que vio la IA
+      _generoDetectado = analisis['genero']; 
     });
   }
 
@@ -1276,7 +1261,6 @@ class _PantallaMuroState extends State<PantallaMuro> {
     }
   }
 
-  // ==================== NUEVO FLUJO DE CREAR PUBLICACIÓN ====================
   Future<void> _abrirCrearPublicacion() async {
     final miId = Supabase.instance.client.auth.currentUser?.id;
     if (miId == null) return;
@@ -1290,8 +1274,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
     String? depSel;
     String? ciuSel;
 
-    // ESTADO DEL MODAL (Req 2 y 3)
-    int pasoModal = 0; // 0 = Guía, 1 = Procesando IA, 2 = Formulario
+    int pasoModal = 0; 
     String estadoProcesoIA = '';
 
     await showModalBottomSheet(
@@ -1303,11 +1286,10 @@ class _PantallaMuroState extends State<PantallaMuro> {
         return StatefulBuilder(
           builder: (context, setStateModal) {
             
-            // Función para iniciar validación en vivo (Req 2)
             Future<void> iniciarVerificacionVivo() async {
               final XFile? selfieTiempoReal = await _picker.pickImage(
                 source: ImageSource.camera, 
-                preferredCameraDevice: CameraDevice.front, // Forzamos selfie
+                preferredCameraDevice: CameraDevice.front, 
                 imageQuality: 80,
               );
               
@@ -1326,9 +1308,9 @@ class _PantallaMuroState extends State<PantallaMuro> {
               });
 
               if (identidadConfirmada) {
-                setStateModal(() => pasoModal = 2); // Pasamos al formulario
+                setStateModal(() => pasoModal = 2); 
               } else {
-                setStateModal(() => pasoModal = 0); // Devolvemos a la guía
+                setStateModal(() => pasoModal = 0); 
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -1408,7 +1390,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
                 }
               } catch (e) {
                 if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-                setStateModal(() => pasoModal = 2); // Devolver al form si hay error de subida
+                setStateModal(() => pasoModal = 2); 
               }
             }
 
@@ -1419,10 +1401,6 @@ class _PantallaMuroState extends State<PantallaMuro> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    
-                    // ===================================
-                    // PASO 0: GUÍA (Req 3)
-                    // ===================================
                     if (pasoModal == 0) ...[
                       const Icon(Icons.shield, size: 60, color: Colors.blueAccent),
                       const SizedBox(height: 10),
@@ -1454,9 +1432,6 @@ class _PantallaMuroState extends State<PantallaMuro> {
                       const SizedBox(height: 20),
                     ],
 
-                    // ===================================
-                    // PASO 1: PROCESANDO IA
-                    // ===================================
                     if (pasoModal == 1) ...[
                       const SizedBox(height: 40),
                       const CircularProgressIndicator(color: Colors.greenAccent),
@@ -1469,9 +1444,6 @@ class _PantallaMuroState extends State<PantallaMuro> {
                       const SizedBox(height: 40),
                     ],
 
-                    // ===================================
-                    // PASO 2: FORMULARIO DE PUBLICACIÓN
-                    // ===================================
                     if (pasoModal == 2) ...[
                       const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -2385,11 +2357,11 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     }
   }
 
-Future<void> _cambiarFotoPerfil() async {
+  Future<void> _cambiarFotoPerfil() async {
     final ImagePicker picker = ImagePicker();
     XFile? nuevaFoto;
 
-    // 1. Permitir al usuario elegir el origen de la nueva foto
+    // 1. Elegir origen de la foto
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.grey[900],
@@ -2418,12 +2390,27 @@ Future<void> _cambiarFotoPerfil() async {
 
     if (nuevaFoto == null) return;
     
-    setState(() => _guardando = true);
+    // Mostramos un diálogo visual para que el usuario entienda que se está verificando
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const AlertDialog(
+        backgroundColor: Colors.black87,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.greenAccent),
+            SizedBox(height: 16),
+            Text("Analizando biometría con IA...", style: TextStyle(color: Colors.white)),
+          ]
+        )
+      )
+    );
     
-    // 2. VERIFICAR QUE ES UN ROSTRO REAL (Evita paisajes o múltiples personas)
+    // 2. VERIFICAR QUE ES UN ROSTRO REAL
     Map<String, dynamic> analisis = await _analizarRostroIA(nuevaFoto!);
     if (analisis['valido'] == false) {
-      setState(() => _guardando = false);
+      Navigator.pop(context); // Cierra el dialogo
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(analisis['mensaje'] ?? '❌ IA rechazada.'), backgroundColor: Colors.red)
@@ -2432,14 +2419,12 @@ Future<void> _cambiarFotoPerfil() async {
       return;
     }
 
-    // 3. VERIFICAR QUE LA NUEVA FOTO SEA DE LA MISMA PERSONA (Contra la foto actual)
+    // 3. VERIFICAR QUE SEA LA MISMA PERSONA DE LA FOTO ACTUAL
     if (_fotoUrl != null && _fotoUrl!.isNotEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⏳ IA verificando tu identidad...'), backgroundColor: Colors.orange, duration: Duration(seconds: 2)));
-      
       bool esElMismo = await _verificarSelfieContraPerfil(_fotoUrl, nuevaFoto!, (mensaje) => debugPrint(mensaje));
 
       if (!esElMismo) {
-        setState(() => _guardando = false);
+        Navigator.pop(context); // Cierra el dialogo
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -2455,8 +2440,6 @@ Future<void> _cambiarFotoPerfil() async {
 
     // 4. SUBIR Y ACTUALIZAR
     try {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Identidad confirmada. Subiendo foto...'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
-      
       final miId = Supabase.instance.client.auth.currentUser!.id;
       final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       
@@ -2471,7 +2454,7 @@ Future<void> _cambiarFotoPerfil() async {
       await Supabase.instance.client.from('perfiles').update({
         'foto_url': nuevaUrl,
         'genero': analisis['genero'],
-        'verificado_biometria': false // Pierde la insignia azul, debe volver a verificar liveness
+        'verificado_biometria': false // Pierde la insignia azul, debe volver a verificar
       }).eq('id', miId);
       
       setState(() {
@@ -2480,20 +2463,19 @@ Future<void> _cambiarFotoPerfil() async {
         _esVerificado = false; 
       });
       
+      Navigator.pop(context); // Cierra el dialogo
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Foto de perfil actualizada con éxito'), backgroundColor: Colors.green));
     } catch (e) {
+      Navigator.pop(context); // Cierra el dialogo
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-    } finally {
-      if (mounted) setState(() => _guardando = false);
     }
   }
 
   // =======================================================
-  // NUEVA FUNCIÓN: PROCESO PARA OBTENER LA INSIGNIA AZUL
+  // PROCESO PARA OBTENER LA INSIGNIA AZUL
   // =======================================================
   Future<void> _verificarPerfilConIA() async {
     final ImagePicker picker = ImagePicker();
-    // Obligamos a usar la cámara frontal en tiempo real
     final XFile? selfieTiempoReal = await picker.pickImage(
       source: ImageSource.camera,
       preferredCameraDevice: CameraDevice.front,
@@ -2502,22 +2484,33 @@ Future<void> _cambiarFotoPerfil() async {
 
     if (selfieTiempoReal == null) return;
 
-    setState(() => _guardando = true);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const AlertDialog(
+        backgroundColor: Colors.black87,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.blueAccent),
+            SizedBox(height: 16),
+            Text("Verificando identidad con IA...", style: TextStyle(color: Colors.white)),
+          ]
+        )
+      )
+    );
 
-    // Usamos la misma función robusta de Face++ que usamos para las publicaciones
     bool identidadConfirmada = await _verificarSelfieContraPerfil(
       _fotoUrl,
       selfieTiempoReal,
-      (mensaje) {
-        // Opcional: Podrías usar este callback para mostrar el estado en UI, aquí lo mandamos a consola
-        debugPrint(mensaje);
-      }
+      (mensaje) => debugPrint(mensaje)
     );
+
+    Navigator.pop(context); // Cierra el dialogo
 
     if (identidadConfirmada) {
       try {
         final miId = Supabase.instance.client.auth.currentUser!.id;
-        // Le otorgamos la insignia oficial en la Base de Datos
         await Supabase.instance.client.from('perfiles').update({'verificado_biometria': true}).eq('id', miId);
         setState(() => _esVerificado = true);
         
@@ -2531,14 +2524,13 @@ Future<void> _cambiarFotoPerfil() async {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('❌ Verificación fallida: Tu selfie no coincide con tu foto de perfil actual.'),
+            content: Text('❌ Verificación fallida: Tu selfie no coincide con tu foto actual.'),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 4),
           )
         );
       }
     }
-    setState(() => _guardando = false);
   }
 
   Future<void> _guardarCambios() async {
@@ -2576,7 +2568,7 @@ Future<void> _cambiarFotoPerfil() async {
             child: Stack(
               children: [
                 CircleAvatar(radius: 60, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null, child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.black) : null),
-                Positioned(bottom: 0, right: 0, child: Container(decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle), padding: const EdgeInsets.all(8), child: const Icon(Icons.camera_alt, size: 20, color: Colors.white)))
+                Positioned(bottom: 0, right: 0, child: Container(decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle), padding: const EdgeInsets.all(8), child: const Icon(Icons.edit, size: 20, color: Colors.white)))
               ],
             ),
           ),
