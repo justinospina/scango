@@ -18,6 +18,46 @@ import 'package:http/http.dart' as http;
 
 bool _mayorDeEdadConfirmado = false;
 
+// ==================== FUNCIONES GLOBALES DE INTELIGENCIA ARTIFICIAL ====================
+
+/// [VERDAD BASE]: Valida que en la foto (selfie) haya exactamente UN rostro humano.
+Future<bool> _verificarRostroUnicoIA(XFile foto) async {
+  // REEMPLAZA CON TUS LLAVES REALES DE FACE++
+  const String apiKey = 'TU_API_KEY_AQUI'; 
+  const String apiSecret = 'TU_API_SECRET_AQUI';
+  const String apiUrl = 'https://api-us.faceplusplus.com/facepp/v3/detect';
+
+  try {
+    var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
+    request.fields['api_key'] = apiKey;
+    request.fields['api_secret'] = apiSecret;
+    request.files.add(await http.MultipartFile.fromPath('image_file', foto.path));
+
+    var response = await request.send();
+    if (response.statusCode == 200) {
+      var responseData = await response.stream.bytesToString();
+      var jsonResult = jsonDecode(responseData);
+      
+      if (jsonResult['faces'] != null) {
+        List rostros = jsonResult['faces'];
+        if (rostros.length == 1) {
+          return true; // Éxito: Exactamente 1 humano
+        } else if (rostros.isEmpty) {
+          debugPrint('No se detectaron rostros en la foto de perfil');
+          return false;
+        } else {
+          debugPrint('Se detectó más de una persona en la foto de perfil');
+          return false;
+        }
+      }
+    }
+    return false;
+  } catch (e) {
+    debugPrint('Error en Face Detect: $e');
+    return false;
+  }
+}
+
 // ==================== LIBRERÍA DE DATOS ====================
 class ColombiaData {
   static const List<String> categorias = [
@@ -846,11 +886,43 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   }
 
   Future<void> procesarFoto() async {
-    final XFile? foto = await _picker.pickImage(source: ImageSource.camera, maxWidth: 600);
+    // 1. FORZAR CÁMARA FRONTAL EN TIEMPO REAL (Bloquea la galería)
+    final XFile? foto = await _picker.pickImage(
+      source: ImageSource.camera, 
+      preferredCameraDevice: CameraDevice.front, // Obliga cámara selfie
+      maxWidth: 600,
+      imageQuality: 80,
+    );
+    
     if (foto == null) return;
-    setState(() { _fotoPerfil = foto; _procesandoIA = true; });
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() { _procesandoIA = false; _generoDetectado = 'HOMBRE'; });
+    
+    setState(() { 
+      _procesandoIA = true; 
+    });
+
+    // 2. VERIFICAR QUE ES UN ROSTRO REAL
+    bool esRostroValido = await _verificarRostroUnicoIA(foto);
+
+    if (!esRostroValido) {
+      setState(() => _procesandoIA = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ IA rechazada: Tómate una selfie clara donde solo aparezca tu rostro.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          )
+        );
+      }
+      return; // Bloquea el proceso
+    }
+
+    // 3. SI PASA LA IA, LO DEJA REGISTRARSE
+    setState(() {
+      _fotoPerfil = foto;
+      _procesandoIA = false;
+      _generoDetectado = 'HOMBRE'; 
+    });
   }
 
   Future<void> registrarYGuardar() async {
@@ -927,14 +999,14 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                   ElevatedButton.icon(
                     onPressed: procesarFoto,
                     icon: const Icon(Icons.camera_alt),
-                    label: const Text('Tomar Foto para Análisis IA'),
+                    label: const Text('Tomar Foto Selfie (Obligatorio)'),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800], foregroundColor: Colors.white),
                   )
                 else ...[
                   const Icon(Icons.check_circle, color: Colors.green, size: 50),
                   const SizedBox(height: 10),
                   if (_procesandoIA) const CircularProgressIndicator()
-                  else Text('IA Detectó: $_generoDetectado', style: const TextStyle(fontSize: 20, color: Colors.greenAccent)),
+                  else Text('IA Detectó Rostro: $_generoDetectado', style: const TextStyle(fontSize: 20, color: Colors.greenAccent)),
                 ],
                 const SizedBox(height: 25),
                 if (_generoDetectado != null && !_procesandoIA) ...[
@@ -1153,35 +1225,65 @@ class _PantallaMuroState extends State<PantallaMuro> {
     }
   }
 
-  // ==================== SIMULADOR IA ====================
-Future<bool> _verificarRostrosConIA(String? miFotoUrl, List<XFile> fotosNuevas, Function(String) onProgress) async {
+  // ==================== PETICIÓN REAL A FACE++ (COMPARE) ====================
+  Future<bool> _verificarRostrosConIA(String? miFotoUrl, List<XFile> fotosNuevas, Function(String) onProgress) async {
     if (miFotoUrl == null || miFotoUrl.isEmpty) return false;
 
-    // Recorremos cada foto subida para analizarla
-    for (int i = 0; i < fotosNuevas.length; i++) {
-      // 1. Mensaje de escaneo
-      onProgress('👁️ Escaneando rostro en foto ${i + 1} de ${fotosNuevas.length}...');
-      await Future.delayed(const Duration(seconds: 2)); // Tiempo de subida a la IA
-      
-      // 2. Mensaje de comparación
-      onProgress('🧠 Comparando biometría facial ${i + 1}...');
-      await Future.delayed(const Duration(seconds: 2)); // Tiempo de análisis geométrico
+    // REEMPLAZA CON TUS LLAVES REALES DE FACE++
+    const String apiKey = 'TU_API_KEY_AQUI'; 
+    const String apiSecret = 'TU_API_SECRET_AQUI';
+    const String apiUrl = 'https://api-us.faceplusplus.com/facepp/v3/compare';
 
-      // ==========================================================
-      // AQUÍ VA TU CÓDIGO REAL DE FACE++ O AWS QUE TE DI ANTES.
-      // Si la API detecta que NO es la misma persona, retornas false:
-      // return false;
-      // ==========================================================
+    try {
+      for (int i = 0; i < fotosNuevas.length; i++) {
+        final fotoNueva = fotosNuevas[i];
+        
+        onProgress('👁️ Escaneando rostro en foto ${i + 1} de ${fotosNuevas.length}...');
+        await Future.delayed(const Duration(milliseconds: 500)); // Pequeña pausa UX
+        
+        onProgress('🧠 Comparando biometría facial ${i + 1}...');
+        
+        var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
+        request.fields['api_key'] = apiKey;
+        request.fields['api_secret'] = apiSecret;
+        request.fields['image_url1'] = miFotoUrl; // Verdad base: Foto del perfil
+        request.files.add(await http.MultipartFile.fromPath('image_file2', fotoNueva.path)); // Foto a publicar
+
+        var response = await request.send();
+        
+        if (response.statusCode == 200) {
+          var responseData = await response.stream.bytesToString();
+          var jsonResult = jsonDecode(responseData);
+          
+          if (jsonResult['confidence'] != null) {
+            double porcentajeSimilitud = (jsonResult['confidence'] as num).toDouble();
+            
+            // Umbral de 80% para confirmar que es la misma persona
+            if (porcentajeSimilitud < 80.0) {
+              debugPrint('IA Rechazó la foto. Similitud: $porcentajeSimilitud%');
+              return false; 
+            }
+          } else {
+            debugPrint('IA No detectó rostros para comparar en esta foto.');
+            return false; 
+          }
+        } else {
+          debugPrint('Error de comunicación con la API de IA');
+          return false;
+        }
+      }
+      
+      onProgress('✅ ¡Identidad confirmada por IA!');
+      await Future.delayed(const Duration(milliseconds: 800));
+      return true; 
+      
+    } catch (e) {
+      debugPrint('Error procesando biometría: $e');
+      return false;
     }
-    
-    // 3. Mensaje de éxito si todas pasaron
-    onProgress('✅ ¡Identidad confirmada por IA!');
-    await Future.delayed(const Duration(milliseconds: 800));
-    
-    return true; 
   }
 
-Future<void> _abrirCrearPublicacion() async {
+  Future<void> _abrirCrearPublicacion() async {
     final miId = Supabase.instance.client.auth.currentUser?.id;
     if (miId == null) return;
 
@@ -1190,7 +1292,7 @@ Future<void> _abrirCrearPublicacion() async {
     
     List<Map<String, dynamic>> mediaItems = [];
     bool procesando = false;
-    String estadoProceso = 'Iniciando publicación...'; // <--- NUEVA VARIABLE DE ESTADO
+    String estadoProceso = 'Iniciando publicación...'; 
     
     String categoriaSel = ColombiaData.categorias.first;
     String? depSel;
@@ -1236,7 +1338,7 @@ Future<void> _abrirCrearPublicacion() async {
                 final miFotoUrl = perfilData?['foto_url'];
                 final fotos = mediaItems.where((m) => m['tipo'] == 'img').map((m) => m['file'] as XFile).toList();
 
-                // LLAMAMOS A LA IA Y ACTUALIZAMOS EL TEXTO EN TIEMPO REAL
+                // LLAMAMOS A LA IA DE COMPARACIÓN Y ACTUALIZAMOS EL TEXTO EN TIEMPO REAL
                 bool verificadoPorIA = await _verificarRostrosConIA(miFotoUrl, fotos, (String mensajeIA) {
                   setStateModal(() => estadoProceso = mensajeIA);
                 });
@@ -1245,7 +1347,7 @@ Future<void> _abrirCrearPublicacion() async {
                   setStateModal(() => procesando = false);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('❌ Verificación fallida: Las fotos no coinciden con tu perfil.'), 
+                      content: Text('❌ Verificación fallida: Las fotos no coinciden con tu perfil o no hay un rostro claro.'), 
                       backgroundColor: Colors.red,
                       duration: Duration(seconds: 4),
                     )
@@ -1407,16 +1509,13 @@ Future<void> _abrirCrearPublicacion() async {
                     ),
                     const SizedBox(height: 10),
                     
-                    // ==========================================
-                    // SECCIÓN DE ESTADO ACTUALIZADA VISUALMENTE
-                    // ==========================================
                     procesando
                       ? Column(
                           children: [
                             const CircularProgressIndicator(color: Colors.greenAccent),
                             const SizedBox(height: 12),
                             Text(
-                              estadoProceso, // MUESTRA LOS PASOS EN TIEMPO REAL
+                              estadoProceso, 
                               style: const TextStyle(color: Colors.greenAccent, fontSize: 14, fontWeight: FontWeight.bold),
                               textAlign: TextAlign.center,
                             )
@@ -1541,7 +1640,6 @@ Future<void> _abrirCrearPublicacion() async {
                                   final whatsapp = pub['whatsapp']?.toString();
                                   final esMio = !widget.esInvitado && miId != null && pub['usuario_id'] == miId;
 
-                                  // Preparar lista de archivos multimedia
                                   List<dynamic> mediaRenderList = [];
                                   if (pub['media_url'] != null) {
                                     String mediaStr = pub['media_url'].toString();
@@ -1550,7 +1648,6 @@ Future<void> _abrirCrearPublicacion() async {
                                         mediaRenderList = jsonDecode(mediaStr);
                                       } catch (e) {}
                                     } else {
-                                      // Retrocompatibilidad con publicaciones antiguas
                                       mediaRenderList = [{'url': mediaStr, 'tipo': pub['tipo']}];
                                     }
                                   }
@@ -1580,7 +1677,7 @@ Future<void> _abrirCrearPublicacion() async {
                                                           const Icon(Icons.verified, color: Colors.blueAccent, size: 16),
                                                         ],
                                                         const SizedBox(width: 4),
-                                                        const Icon(Icons.psychology, color: Colors.deepPurpleAccent, size: 16) // Iconito IA para indicar que pasó filtro
+                                                        const Icon(Icons.psychology, color: Colors.deepPurpleAccent, size: 16)
                                                       ],
                                                     ),
                                                     Text('${pub['ciudad'] ?? 'Sin Ciudad'}, ${pub['departamento'] ?? ''}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
@@ -1604,7 +1701,6 @@ Future<void> _abrirCrearPublicacion() async {
                                               child: Text(pub['texto'], style: const TextStyle(fontSize: 15)),
                                             ),
                                           
-                                          // Llamado al carrusel
                                           CarruselPublicacion(media: mediaRenderList),
 
                                           if (whatsapp != null && whatsapp.trim().isNotEmpty)
@@ -1637,7 +1733,6 @@ Future<void> _abrirCrearPublicacion() async {
                                 },
                               ),
                             ),
-                            // CONTROLES DE PAGINACIÓN
                             Container(
                               padding: const EdgeInsets.all(12),
                               color: Colors.grey[900],
@@ -2231,9 +2326,31 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 
   Future<void> _cambiarFotoPerfil() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? nuevaFoto = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    // 1. FORZAR CÁMARA FRONTAL EN TIEMPO REAL
+    final XFile? nuevaFoto = await picker.pickImage(
+      source: ImageSource.camera, 
+      preferredCameraDevice: CameraDevice.front,
+      imageQuality: 70
+    );
     if (nuevaFoto == null) return;
+    
     setState(() => _guardando = true);
+    
+    // 2. VERIFICAR QUE ES UN ROSTRO REAL
+    bool esRostroValido = await _verificarRostroUnicoIA(nuevaFoto);
+    if (!esRostroValido) {
+      setState(() => _guardando = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ IA rechazada: Debe ser una selfie clara tuya.'), 
+            backgroundColor: Colors.red
+          )
+        );
+      }
+      return;
+    }
+
     try {
       final miId = Supabase.instance.client.auth.currentUser!.id;
       final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -2245,7 +2362,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       final nuevaUrl = Supabase.instance.client.storage.from('fotos-perfil').getPublicUrl(fileName);
       await Supabase.instance.client.from('perfiles').update({'foto_url': nuevaUrl}).eq('id', miId);
       setState(() => _fotoUrl = nuevaUrl);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Foto actualizada'), backgroundColor: Colors.green));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Foto verificada y actualizada'), backgroundColor: Colors.green));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
     } finally {
@@ -2288,7 +2405,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
             child: Stack(
               children: [
                 CircleAvatar(radius: 60, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null, child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.black) : null),
-                Positioned(bottom: 0, right: 0, child: Container(decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle), padding: const EdgeInsets.all(8), child: const Icon(Icons.edit, size: 20, color: Colors.white)))
+                Positioned(bottom: 0, right: 0, child: Container(decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle), padding: const EdgeInsets.all(8), child: const Icon(Icons.camera_alt, size: 20, color: Colors.white)))
               ],
             ),
           ),
