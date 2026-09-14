@@ -249,7 +249,7 @@ class _ScanGoAppState extends State<ScanGoApp> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _solicitarBiometria() async {
+Future<void> _solicitarBiometria() async {
     if (Supabase.instance.client.auth.currentSession == null) return;
     if (_autenticando) return;
 
@@ -271,13 +271,8 @@ class _ScanGoAppState extends State<ScanGoApp> with WidgetsBindingObserver {
         localizedReason: 'Desbloquea ScanGo para continuar',
       );
 
-      if (exitoso) {
-        final miId = Supabase.instance.client.auth.currentUser?.id;
-        if (miId != null) {
-          await Supabase.instance.client.from('perfiles').update({'verificado_biometria': true}).eq('id', miId);
-        }
-      }
-
+      // AQUÍ ELIMINAMOS LA ACTUALIZACIÓN A LA BASE DE DATOS.
+      // El desbloqueo local (huella) solo da acceso a la app, no otorga la insignia azul.
       if (mounted) setState(() => _autenticado = exitoso);
     } catch (e) {
       debugPrint("Error biometría: $e");
@@ -2390,9 +2385,8 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     }
   }
 
-Future<void> _cambiarFotoPerfil() async {
+  Future<void> _cambiarFotoPerfil() async {
     final ImagePicker picker = ImagePicker();
-    // 1. FORZAR CÁMARA FRONTAL EN TIEMPO REAL
     final XFile? nuevaFoto = await picker.pickImage(
       source: ImageSource.camera, 
       preferredCameraDevice: CameraDevice.front,
@@ -2402,16 +2396,12 @@ Future<void> _cambiarFotoPerfil() async {
     
     setState(() => _guardando = true);
     
-    // 2. VERIFICAR QUE ES UN ROSTRO REAL
     Map<String, dynamic> analisis = await _analizarRostroIA(nuevaFoto);
     if (analisis['valido'] == false) {
       setState(() => _guardando = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(analisis['mensaje'] ?? '❌ IA rechazada.'), 
-            backgroundColor: Colors.red
-          )
+          SnackBar(content: Text(analisis['mensaje'] ?? '❌ IA rechazada.'), backgroundColor: Colors.red)
         );
       }
       return;
@@ -2427,22 +2417,76 @@ Future<void> _cambiarFotoPerfil() async {
       }
       final nuevaUrl = Supabase.instance.client.storage.from('fotos-perfil').getPublicUrl(fileName);
       
-      // Actualizamos foto y también el género por si la IA detectó un cambio físico radical
       await Supabase.instance.client.from('perfiles').update({
         'foto_url': nuevaUrl,
-        'genero': analisis['genero'] 
+        'genero': analisis['genero'],
+        'verificado_biometria': false // ⚠️ Si cambia de foto, pierde su verificación y debe volver a verificar
       }).eq('id', miId);
       
       setState(() {
         _fotoUrl = nuevaUrl;
-        _genero = analisis['genero']; // Reflejamos el cambio en la UI
+        _genero = analisis['genero'];
+        _esVerificado = false; // Requiere nueva verificación
       });
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Foto verificada y actualizada'), backgroundColor: Colors.green));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Foto actualizada (Debes volver a verificarte)'), backgroundColor: Colors.orange));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _guardando = false);
     }
+  }
+
+  // =======================================================
+  // NUEVA FUNCIÓN: PROCESO PARA OBTENER LA INSIGNIA AZUL
+  // =======================================================
+  Future<void> _verificarPerfilConIA() async {
+    final ImagePicker picker = ImagePicker();
+    // Obligamos a usar la cámara frontal en tiempo real
+    final XFile? selfieTiempoReal = await picker.pickImage(
+      source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.front,
+      imageQuality: 80,
+    );
+
+    if (selfieTiempoReal == null) return;
+
+    setState(() => _guardando = true);
+
+    // Usamos la misma función robusta de Face++ que usamos para las publicaciones
+    bool identidadConfirmada = await _verificarSelfieContraPerfil(
+      _fotoUrl,
+      selfieTiempoReal,
+      (mensaje) {
+        // Opcional: Podrías usar este callback para mostrar el estado en UI, aquí lo mandamos a consola
+        debugPrint(mensaje);
+      }
+    );
+
+    if (identidadConfirmada) {
+      try {
+        final miId = Supabase.instance.client.auth.currentUser!.id;
+        // Le otorgamos la insignia oficial en la Base de Datos
+        await Supabase.instance.client.from('perfiles').update({'verificado_biometria': true}).eq('id', miId);
+        setState(() => _esVerificado = true);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ ¡Felicidades! Tu perfil ahora está verificado por IA.'), backgroundColor: Colors.green));
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error guardando verificación: $e'), backgroundColor: Colors.red));
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Verificación fallida: Tu selfie no coincide con tu foto de perfil actual.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          )
+        );
+      }
+    }
+    setState(() => _guardando = false);
   }
 
   Future<void> _guardarCambios() async {
@@ -2484,11 +2528,41 @@ Future<void> _cambiarFotoPerfil() async {
               ],
             ),
           ),
+          
+          // ==========================================
+          // ZONA DE VERIFICACIÓN DINÁMICA
+          // ==========================================
           if (_esVerificado) ...[
-            const SizedBox(height: 10),
-            const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.verified, color: Colors.blueAccent, size: 20), SizedBox(width: 5), Text('Usuario Verificado', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold))])
+            const SizedBox(height: 15),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.blueAccent)),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.verified, color: Colors.blueAccent, size: 20), 
+                  SizedBox(width: 5), 
+                  Text('Perfil Verificado', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold))
+                ]
+              ),
+            )
+          ] else ...[
+            const SizedBox(height: 15),
+            ElevatedButton.icon(
+              onPressed: _guardando ? null : _verificarPerfilConIA,
+              icon: const Icon(Icons.face_retouching_natural),
+              label: const Text('Verificar Perfil con IA'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent, 
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))
+              ),
+            ),
+            const SizedBox(height: 5),
+            const Text('Obtén la insignia azul tomándote una selfie', style: TextStyle(color: Colors.grey, fontSize: 11)),
           ],
-          const SizedBox(height: 25),
+          
+          const SizedBox(height: 35),
           TextField(controller: _nombreController, decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder())),
           const SizedBox(height: 15),
           TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Edad', border: OutlineInputBorder())),
