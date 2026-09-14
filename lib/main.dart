@@ -21,7 +21,8 @@ bool _mayorDeEdadConfirmado = false;
 // ==================== FUNCIONES GLOBALES DE INTELIGENCIA ARTIFICIAL ====================
 
 /// [VERDAD BASE]: Valida que en la foto (selfie) haya exactamente UN rostro humano.
-Future<bool> _verificarRostroUnicoIA(XFile foto) async {
+/// [VERDAD BASE]: Valida un solo rostro y detecta el género con IA.
+Future<Map<String, dynamic>> _analizarRostroIA(XFile foto) async {
   // REEMPLAZA CON TUS LLAVES REALES DE FACE++
   const String apiKey = 'TU_API_KEY_AQUI'; 
   const String apiSecret = 'TU_API_SECRET_AQUI';
@@ -31,6 +32,8 @@ Future<bool> _verificarRostroUnicoIA(XFile foto) async {
     var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
     request.fields['api_key'] = apiKey;
     request.fields['api_secret'] = apiSecret;
+    // NUEVO: Pedimos a la IA que nos devuelva el análisis de género
+    request.fields['return_attributes'] = 'gender';
     request.files.add(await http.MultipartFile.fromPath('image_file', foto.path));
 
     var response = await request.send();
@@ -41,20 +44,22 @@ Future<bool> _verificarRostroUnicoIA(XFile foto) async {
       if (jsonResult['faces'] != null) {
         List rostros = jsonResult['faces'];
         if (rostros.length == 1) {
-          return true; // Éxito: Exactamente 1 humano
+          // Extraemos el género y lo traducimos
+          String generoApi = rostros[0]['attributes']['gender']['value'];
+          String generoTraducido = generoApi.toLowerCase() == 'female' ? 'MUJER' : 'HOMBRE';
+          
+          return {'valido': true, 'genero': generoTraducido};
         } else if (rostros.isEmpty) {
-          debugPrint('No se detectaron rostros en la foto de perfil');
-          return false;
+          return {'valido': false, 'mensaje': '❌ IA rechazada: No se detectó ningún rostro humano.'};
         } else {
-          debugPrint('Se detectó más de una persona en la foto de perfil');
-          return false;
+          return {'valido': false, 'mensaje': '❌ IA rechazada: Se detectó más de una persona en la foto.'};
         }
       }
     }
-    return false;
+    return {'valido': false, 'mensaje': '❌ Error de comunicación con la IA de detección.'};
   } catch (e) {
     debugPrint('Error en Face Detect: $e');
-    return false;
+    return {'valido': false, 'mensaje': '❌ Error de conexión al verificar el rostro.'};
   }
 }
 
@@ -938,7 +943,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     );
   }
 
-  Future<void> procesarFoto() async {
+Future<void> procesarFoto() async {
     // 1. FORZAR CÁMARA FRONTAL EN TIEMPO REAL
     final XFile? foto = await _picker.pickImage(
       source: ImageSource.camera, 
@@ -951,27 +956,28 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     
     setState(() { _procesandoIA = true; });
 
-    // 2. VERIFICAR QUE ES UN ROSTRO REAL (Req 1)
-    bool esRostroValido = await _verificarRostroUnicoIA(foto);
+    // 2. VERIFICAR ROSTRO Y OBTENER GÉNERO CON IA
+    Map<String, dynamic> analisis = await _analizarRostroIA(foto);
 
-    if (!esRostroValido) {
+    if (analisis['valido'] == false) {
       setState(() => _procesandoIA = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ IA rechazada: Tómate una selfie clara donde solo aparezca tu rostro.'),
+          SnackBar(
+            content: Text(analisis['mensaje'] ?? '❌ IA rechazada.'),
             backgroundColor: Colors.red,
-            duration: Duration(seconds: 4),
+            duration: const Duration(seconds: 4),
           )
         );
       }
       return; 
     }
 
+    // 3. ASIGNAR GÉNERO DINÁMICO
     setState(() {
       _fotoPerfil = foto;
       _procesandoIA = false;
-      _generoDetectado = 'HOMBRE'; 
+      _generoDetectado = analisis['genero']; // Asigna "MUJER" u "HOMBRE" según lo que vio la IA
     });
   }
 
@@ -2384,7 +2390,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     }
   }
 
-  Future<void> _cambiarFotoPerfil() async {
+Future<void> _cambiarFotoPerfil() async {
     final ImagePicker picker = ImagePicker();
     // 1. FORZAR CÁMARA FRONTAL EN TIEMPO REAL
     final XFile? nuevaFoto = await picker.pickImage(
@@ -2397,13 +2403,13 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     setState(() => _guardando = true);
     
     // 2. VERIFICAR QUE ES UN ROSTRO REAL
-    bool esRostroValido = await _verificarRostroUnicoIA(nuevaFoto);
-    if (!esRostroValido) {
+    Map<String, dynamic> analisis = await _analizarRostroIA(nuevaFoto);
+    if (analisis['valido'] == false) {
       setState(() => _guardando = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ IA rechazada: Debe ser una selfie clara tuya.'), 
+          SnackBar(
+            content: Text(analisis['mensaje'] ?? '❌ IA rechazada.'), 
             backgroundColor: Colors.red
           )
         );
@@ -2420,8 +2426,17 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
         await Supabase.instance.client.storage.from('fotos-perfil').uploadBinary(fileName, await nuevaFoto.readAsBytes());
       }
       final nuevaUrl = Supabase.instance.client.storage.from('fotos-perfil').getPublicUrl(fileName);
-      await Supabase.instance.client.from('perfiles').update({'foto_url': nuevaUrl}).eq('id', miId);
-      setState(() => _fotoUrl = nuevaUrl);
+      
+      // Actualizamos foto y también el género por si la IA detectó un cambio físico radical
+      await Supabase.instance.client.from('perfiles').update({
+        'foto_url': nuevaUrl,
+        'genero': analisis['genero'] 
+      }).eq('id', miId);
+      
+      setState(() {
+        _fotoUrl = nuevaUrl;
+        _genero = analisis['genero']; // Reflejamos el cambio en la UI
+      });
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Foto verificada y actualizada'), backgroundColor: Colors.green));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
