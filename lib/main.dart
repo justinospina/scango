@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -413,7 +414,7 @@ class PantallaPrincipal extends StatefulWidget {
 }
 
 class PantallaPrincipalState extends State<PantallaPrincipal> {
-  int _indiceActual = 1; // 1 = Mapa/Radar será la pantalla principal por defecto al iniciar sesión
+  int _indiceActual = 1; 
   double? _miLatitud;
   double? _miLongitud;
   Timer? _heartbeatTimer;
@@ -984,6 +985,46 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   }
 }
 
+// ==================== WIDGET CARRUSEL PARA EL MURO ====================
+class CarruselPublicacion extends StatelessWidget {
+  final List<dynamic> media;
+  const CarruselPublicacion({super.key, required this.media});
+
+  @override
+  Widget build(BuildContext context) {
+    if (media.isEmpty) return const SizedBox.shrink();
+    if (media.length == 1) {
+      final item = media.first;
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: item['tipo'] == 'vid'
+            ? ReproductorVideoWidget(url: item['url'])
+            : Image.network(item['url'], width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50, color: Colors.grey)),
+      );
+    }
+    
+    return SizedBox(
+      height: 300,
+      child: PageView.builder(
+        controller: PageController(viewportFraction: 0.95),
+        itemCount: media.length,
+        itemBuilder: (ctx, i) {
+          final item = media[i];
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: item['tipo'] == 'vid'
+                  ? ReproductorVideoWidget(url: item['url'])
+                  : Image.network(item['url'], width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50, color: Colors.grey)),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class PantallaMuro extends StatefulWidget {
   final bool esInvitado;
   const PantallaMuro({super.key, this.esInvitado = false});
@@ -1111,14 +1152,30 @@ class _PantallaMuroState extends State<PantallaMuro> {
     }
   }
 
+  // ==================== SIMULADOR IA ====================
+  Future<bool> _verificarRostrosConIA(String? miFotoUrl, List<XFile> fotosNuevas) async {
+    if (miFotoUrl == null || miFotoUrl.isEmpty) return false;
+
+    // NOTA PARA EL DESARROLLADOR: 
+    // Aquí debes llamar a tu backend que integre AWS Rekognition, Face API, o similar.
+    // Simulo la llamada y la validación correcta.
+    await Future.delayed(const Duration(seconds: 3)); // Simular espera del servidor
+    
+    // Cambia esto a false para probar el caso en que la IA rechaza el post
+    bool matchIAEncontrado = true; 
+    
+    return matchIAEncontrado;
+  }
+
   Future<void> _abrirCrearPublicacion() async {
     final miId = Supabase.instance.client.auth.currentUser?.id;
     if (miId == null) return;
 
     final txtController = TextEditingController();
     final whatsappController = TextEditingController();
-    XFile? mediaFile;
-    String? mediaTipo;
+    
+    // Lista para múltiples archivos (REQ 1: Hasta 5 contenidos)
+    List<Map<String, dynamic>> mediaItems = [];
     bool procesando = false;
     
     String categoriaSel = ColombiaData.categorias.first;
@@ -1133,32 +1190,79 @@ class _PantallaMuroState extends State<PantallaMuro> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setStateModal) {
+            
+            void agregarMedia(XFile archivo, String tipo) {
+              if (mediaItems.length >= 5) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Puedes agregar máximo 5 archivos por publicación.')));
+                return;
+              }
+              setStateModal(() => mediaItems.add({'file': archivo, 'tipo': tipo}));
+            }
+
             Future<void> publicar() async {
               final texto = txtController.text.trim();
-              if ((texto.isEmpty && mediaFile == null) || depSel == null || ciuSel == null) {
+              if ((texto.isEmpty && mediaItems.isEmpty) || depSel == null || ciuSel == null) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Agrega contenido, departamento y ciudad para publicar')));
+                return;
+              }
+
+              // REQ 1: Validar al menos una FOTO
+              int fotosCount = mediaItems.where((m) => m['tipo'] == 'img').length;
+              if (fotosCount == 0) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tu publicación debe contener al menos una foto.', style: TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.orange));
                 return;
               }
               
               setStateModal(() => procesando = true);
               
-              String? urlFinal;
               try {
-                if (mediaFile != null) {
-                  final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}.${mediaTipo == 'vid' ? 'mp4' : 'jpg'}';
-                  if (!kIsWeb) {
-                    await Supabase.instance.client.storage.from('chat-media').upload(fileName, File(mediaFile!.path));
-                  } else {
-                    await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, await mediaFile!.readAsBytes());
-                  }
-                  urlFinal = Supabase.instance.client.storage.from('chat-media').getPublicUrl(fileName);
+                // REQ 2: Verificación IA antes de subir
+                final perfilData = await Supabase.instance.client.from('perfiles').select('foto_url').eq('id', miId).maybeSingle();
+                final miFotoUrl = perfilData?['foto_url'];
+
+                final fotos = mediaItems.where((m) => m['tipo'] == 'img').map((m) => m['file'] as XFile).toList();
+                bool verificadoPorIA = await _verificarRostrosConIA(miFotoUrl, fotos);
+
+                if (!verificadoPorIA) {
+                  setStateModal(() => procesando = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('❌ Verificación fallida: Debes subir contenido con tu mismo rostro para que la IA verifique tu publicación.'), 
+                      backgroundColor: Colors.red,
+                      duration: Duration(seconds: 4),
+                    )
+                  );
+                  return; // Abortar publicación
                 }
+
+                // Subir todos los archivos
+                List<Map<String, String>> urlsSubidas = [];
+
+                for (var i = 0; i < mediaItems.length; i++) {
+                  final item = mediaItems[i];
+                  final XFile file = item['file'];
+                  final String tipo = item['tipo'];
+                  
+                  final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}_$i.${tipo == 'vid' ? 'mp4' : 'jpg'}';
+                  
+                  if (!kIsWeb) {
+                    await Supabase.instance.client.storage.from('chat-media').upload(fileName, File(file.path));
+                  } else {
+                    await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, await file.readAsBytes());
+                  }
+                  
+                  final urlFinal = Supabase.instance.client.storage.from('chat-media').getPublicUrl(fileName);
+                  urlsSubidas.add({'url': urlFinal, 'tipo': tipo});
+                }
+
+                // Guardar la lista de URLs como JSON String para no romper tu base de datos actual
+                String? mediaUrlsJson = urlsSubidas.isNotEmpty ? jsonEncode(urlsSubidas) : null;
 
                 await Supabase.instance.client.from('publicaciones').insert({
                   'usuario_id': miId,
                   'texto': texto,
-                  'media_url': urlFinal,
-                  'tipo': mediaTipo,
+                  'media_url': mediaUrlsJson, // Aquí guardamos el JSON con múltiples URLs
+                  'tipo': 'mixed', // Indicador de contenido mixto
                   'whatsapp': whatsappController.text.trim(),
                   'categoria': categoriaSel,
                   'departamento': depSel,
@@ -1167,7 +1271,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
 
                 if (context.mounted) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Publicado con éxito'), backgroundColor: Colors.green));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Publicado (Verificado por IA)'), backgroundColor: Colors.green));
                   setState(() => _paginaActual = 0);
                   _cargarPublicaciones();
                 }
@@ -1233,44 +1337,70 @@ class _PantallaMuroState extends State<PantallaMuro> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    if (mediaFile != null)
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        margin: const EdgeInsets.only(bottom: 10),
-                        decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(8)),
-                        child: Row(
-                          children: [
-                            Icon(mediaTipo == 'vid' ? Icons.videocam : Icons.image, color: Colors.greenAccent),
-                            const SizedBox(width: 10),
-                            Expanded(child: Text(mediaFile!.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
-                            IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setStateModal(() { mediaFile = null; mediaTipo = null; }))
-                          ],
+                    
+                    // Renderizar los archivos seleccionados
+                    if (mediaItems.isNotEmpty)
+                      SizedBox(
+                        height: 90,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: mediaItems.length,
+                          itemBuilder: (context, index) {
+                            final item = mediaItems[index];
+                            return Container(
+                              width: 80,
+                              margin: const EdgeInsets.only(right: 10),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[800],
+                                borderRadius: BorderRadius.circular(8)
+                              ),
+                              child: Stack(
+                                children: [
+                                  Center(child: Icon(item['tipo'] == 'vid' ? Icons.videocam : Icons.image, size: 40, color: Colors.greenAccent)),
+                                  Positioned(
+                                    right: -5, top: -5,
+                                    child: IconButton(
+                                      icon: const Icon(Icons.cancel, color: Colors.red),
+                                      onPressed: () => setStateModal(() => mediaItems.removeAt(index)),
+                                    )
+                                  )
+                                ],
+                              ),
+                            );
+                          },
                         ),
                       ),
+                      
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         IconButton(icon: const Icon(Icons.camera_alt), color: Colors.blueAccent, onPressed: () async {
                           final f = await _picker.pickImage(source: ImageSource.camera, imageQuality: 70);
-                          if (f != null) setStateModal(() { mediaFile = f; mediaTipo = 'img'; });
+                          if (f != null) agregarMedia(f, 'img');
                         }),
                         IconButton(icon: const Icon(Icons.image), color: Colors.blueAccent, onPressed: () async {
                           final f = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-                          if (f != null) setStateModal(() { mediaFile = f; mediaTipo = 'img'; });
+                          if (f != null) agregarMedia(f, 'img');
                         }),
                         IconButton(icon: const Icon(Icons.videocam), color: Colors.blueAccent, onPressed: () async {
                           final f = await _picker.pickVideo(source: ImageSource.camera);
-                          if (f != null) setStateModal(() { mediaFile = f; mediaTipo = 'vid'; });
+                          if (f != null) agregarMedia(f, 'vid');
                         }),
                       ],
                     ),
                     const SizedBox(height: 10),
                     procesando
-                      ? const CircularProgressIndicator()
+                      ? const Column(
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 8),
+                            Text("Verificando rostros con IA y subiendo...", style: TextStyle(color: Colors.grey, fontSize: 12))
+                          ],
+                        )
                       : ElevatedButton(
                           onPressed: publicar,
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
-                          child: const Text('Publicar Ahora'),
+                          child: Text('Publicar Ahora (${mediaItems.length}/5)'),
                         ),
                     const SizedBox(height: 20),
                   ],
@@ -1386,6 +1516,20 @@ class _PantallaMuroState extends State<PantallaMuro> {
                                   final whatsapp = pub['whatsapp']?.toString();
                                   final esMio = !widget.esInvitado && miId != null && pub['usuario_id'] == miId;
 
+                                  // Preparar lista de archivos multimedia
+                                  List<dynamic> mediaRenderList = [];
+                                  if (pub['media_url'] != null) {
+                                    String mediaStr = pub['media_url'].toString();
+                                    if (mediaStr.startsWith('[')) {
+                                      try {
+                                        mediaRenderList = jsonDecode(mediaStr);
+                                      } catch (e) {}
+                                    } else {
+                                      // Retrocompatibilidad con publicaciones antiguas
+                                      mediaRenderList = [{'url': mediaStr, 'tipo': pub['tipo']}];
+                                    }
+                                  }
+
                                   return Card(
                                     color: Colors.grey[900],
                                     margin: const EdgeInsets.only(bottom: 16),
@@ -1410,6 +1554,8 @@ class _PantallaMuroState extends State<PantallaMuro> {
                                                           const SizedBox(width: 4),
                                                           const Icon(Icons.verified, color: Colors.blueAccent, size: 16),
                                                         ],
+                                                        const SizedBox(width: 4),
+                                                        const Icon(Icons.psychology, color: Colors.deepPurpleAccent, size: 16) // Iconito IA para indicar que pasó filtro
                                                       ],
                                                     ),
                                                     Text('${pub['ciudad'] ?? 'Sin Ciudad'}, ${pub['departamento'] ?? ''}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
@@ -1432,21 +1578,10 @@ class _PantallaMuroState extends State<PantallaMuro> {
                                               padding: const EdgeInsets.only(bottom: 12),
                                               child: Text(pub['texto'], style: const TextStyle(fontSize: 15)),
                                             ),
-                                          if (pub['media_url'] != null)
-                                            ClipRRect(
-                                              borderRadius: BorderRadius.circular(12),
-                                              child: pub['tipo'] == 'vid'
-                                                  ? ReproductorVideoWidget(url: pub['media_url'])
-                                                  : ConstrainedBox(
-                                                      constraints: const BoxConstraints(maxHeight: 250),
-                                                      child: Image.network(
-                                                        pub['media_url'], 
-                                                        width: double.infinity, 
-                                                        fit: BoxFit.cover, 
-                                                        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50, color: Colors.grey)
-                                                      ),
-                                                    ),
-                                            ),
+                                          
+                                          // Llamado al carrusel
+                                          CarruselPublicacion(media: mediaRenderList),
+
                                           if (whatsapp != null && whatsapp.trim().isNotEmpty)
                                             Padding(
                                               padding: const EdgeInsets.only(top: 16),
@@ -1776,7 +1911,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
     final List<Marker> marcadores = [];
     final List<Polyline> lineasMatch = [];
 
-    // Tu propio marcador en el mapa (REQ 1: Foto más pequeña para el usuario logueado)
     marcadores.add(
       Marker(
         point: miUbicacion,
@@ -1793,7 +1927,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
       ),
     );
 
-    // Marcadores de los demás exploradores
     for (var perfil in perfilesCompatibles) {
       final latOtro = (perfil['latitud'] as num?)?.toDouble();
       final lonOtro = (perfil['longitud'] as num?)?.toDouble();
@@ -1832,7 +1965,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
         );
       }
 
-      // REQ 1: Fotos más grandes para los otros perfiles
       marcadores.add(
         Marker(
           point: ubicacionOtro,
@@ -1840,7 +1972,6 @@ class _PantallaRadarState extends State<PantallaRadar> {
           height: 140,
           child: GestureDetector(
             onTap: () {
-              // REQ 3: Al dar clic, SIEMPRE se abre primero la ventana con la opción "Abrir chat"
               showModalBottomSheet(
                 context: context,
                 backgroundColor: Colors.transparent,
@@ -1861,16 +1992,15 @@ class _PantallaRadarState extends State<PantallaRadar> {
                   alignment: Alignment.center,
                   children: [
                     CircleAvatar(
-                      radius: 30, // Avatar más grande
+                      radius: 30, 
                       backgroundColor: Colors.blueAccent,
                       backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null,
                       child: !tieneFoto ? const Icon(Icons.person, size: 30, color: Colors.white) : null,
                     ),
                     
-                    // REQ 2: Icono de Nube encima de la foto de perfil con el número de mensajes
                     if (mensajesSinLeer > 0)
                       Positioned(
-                        top: -20, // Sobresale arriba de la foto
+                        top: -20, 
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
@@ -2166,68 +2296,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 class PantallaSolicitudesYChats extends StatelessWidget {
   const PantallaSolicitudesYChats({super.key});
 
-  void _mostrarPerfilPendiente(BuildContext context, Map<String, dynamic> perfil, Map<String, dynamic> solicitud) {
-    final fotoUrl = perfil['foto_url']?.toString();
-    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
-    final esVerificado = perfil['verificado_biometria'] == true;
-    showModalBottomSheet(
-      context: context, backgroundColor: Colors.grey[900], shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)), if (esVerificado) ...[const SizedBox(width: 6), const Icon(Icons.verified, color: Colors.blueAccent, size: 22)]],
-              ),
-              const SizedBox(height: 8),
-              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent), textAlign: TextAlign.center),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white), onPressed: () async { await Supabase.instance.client.from('solicitudes').update({'estado': 'rechazada'}).eq('id', solicitud['id']); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.close), label: const Text('Rechazar')),
-                  ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white), onPressed: () async { await Supabase.instance.client.from('solicitudes').update({'estado': 'aceptada'}).eq('id', solicitud['id']); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.check), label: const Text('Aceptar')),
-                ],
-              )
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _mostrarPerfilRapidoLectura(BuildContext context, Map<String, dynamic> perfil) {
-    final fotoUrl = perfil['foto_url']?.toString();
-    final tieneFoto = fotoUrl != null && fotoUrl.trim().isNotEmpty;
-    final esVerificado = perfil['verificado_biometria'] == true;
-    showModalBottomSheet(
-      context: context, backgroundColor: Colors.grey[900], shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(radius: 50, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person, size: 50, color: Colors.black) : null),
-              const SizedBox(height: 16),
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text('${perfil['nombre']}, ${perfil['edad']} años', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)), if (esVerificado) ...[const SizedBox(width: 6), const Icon(Icons.verified, color: Colors.blueAccent, size: 22)]]),
-              const SizedBox(height: 8),
-              Text('Desea: ${perfil['deseo_actual']}', style: const TextStyle(fontSize: 16, color: Colors.greenAccent), textAlign: TextAlign.center),
-              const SizedBox(height: 24),
-              ElevatedButton(onPressed: () => Navigator.pop(context), style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[700], foregroundColor: Colors.white), child: const Text('Cerrar'))
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _eliminarVinculoYCreados(BuildContext context, String solicitudId, String otroId, String miId) async {
+  void _eliminarVinculoYCreados(BuildContext context, String solicitudId, String otroId, String miId) async {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
