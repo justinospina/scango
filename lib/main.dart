@@ -2385,18 +2385,43 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     }
   }
 
-  Future<void> _cambiarFotoPerfil() async {
+Future<void> _cambiarFotoPerfil() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? nuevaFoto = await picker.pickImage(
-      source: ImageSource.camera, 
-      preferredCameraDevice: CameraDevice.front,
-      imageQuality: 70
+    XFile? nuevaFoto;
+
+    // 1. Permitir al usuario elegir el origen de la nueva foto
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.camera_alt, color: Colors.greenAccent), 
+            title: const Text('Tomar nueva foto'), 
+            onTap: () async { 
+              Navigator.pop(context); 
+              nuevaFoto = await picker.pickImage(source: ImageSource.camera, preferredCameraDevice: CameraDevice.front, imageQuality: 70); 
+            }
+          ),
+          ListTile(
+            leading: const Icon(Icons.image, color: Colors.greenAccent), 
+            title: const Text('Elegir de la Galería'), 
+            onTap: () async { 
+              Navigator.pop(context); 
+              nuevaFoto = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70); 
+            }
+          ),
+        ],
+      ),
     );
+
     if (nuevaFoto == null) return;
     
     setState(() => _guardando = true);
     
-    Map<String, dynamic> analisis = await _analizarRostroIA(nuevaFoto);
+    // 2. VERIFICAR QUE ES UN ROSTRO REAL (Evita paisajes o múltiples personas)
+    Map<String, dynamic> analisis = await _analizarRostroIA(nuevaFoto!);
     if (analisis['valido'] == false) {
       setState(() => _guardando = false);
       if (mounted) {
@@ -2407,28 +2432,55 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       return;
     }
 
+    // 3. VERIFICAR QUE LA NUEVA FOTO SEA DE LA MISMA PERSONA (Contra la foto actual)
+    if (_fotoUrl != null && _fotoUrl!.isNotEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⏳ IA verificando tu identidad...'), backgroundColor: Colors.orange, duration: Duration(seconds: 2)));
+      
+      bool esElMismo = await _verificarSelfieContraPerfil(_fotoUrl, nuevaFoto!, (mensaje) => debugPrint(mensaje));
+
+      if (!esElMismo) {
+        setState(() => _guardando = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Cambio denegado: La nueva foto no coincide con tu rostro registrado.'), 
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 4),
+            )
+          );
+        }
+        return;
+      }
+    }
+
+    // 4. SUBIR Y ACTUALIZAR
     try {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Identidad confirmada. Subiendo foto...'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
+      
       final miId = Supabase.instance.client.auth.currentUser!.id;
       final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      
       if (!kIsWeb) {
-        await Supabase.instance.client.storage.from('fotos-perfil').upload(fileName, File(nuevaFoto.path));
+        await Supabase.instance.client.storage.from('fotos-perfil').upload(fileName, File(nuevaFoto!.path));
       } else {
-        await Supabase.instance.client.storage.from('fotos-perfil').uploadBinary(fileName, await nuevaFoto.readAsBytes());
+        await Supabase.instance.client.storage.from('fotos-perfil').uploadBinary(fileName, await nuevaFoto!.readAsBytes());
       }
+      
       final nuevaUrl = Supabase.instance.client.storage.from('fotos-perfil').getPublicUrl(fileName);
       
       await Supabase.instance.client.from('perfiles').update({
         'foto_url': nuevaUrl,
         'genero': analisis['genero'],
-        'verificado_biometria': false // ⚠️ Si cambia de foto, pierde su verificación y debe volver a verificar
+        'verificado_biometria': false // Pierde la insignia azul, debe volver a verificar liveness
       }).eq('id', miId);
       
       setState(() {
         _fotoUrl = nuevaUrl;
         _genero = analisis['genero'];
-        _esVerificado = false; // Requiere nueva verificación
+        _esVerificado = false; 
       });
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Foto actualizada (Debes volver a verificarte)'), backgroundColor: Colors.orange));
+      
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Foto de perfil actualizada con éxito'), backgroundColor: Colors.green));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
     } finally {
