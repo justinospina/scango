@@ -30,14 +30,19 @@ bool _mayorDeEdadConfirmado = false;
 Future<Map<String, dynamic>> _analizarRostroIA(XFile foto) async {
   if (kIsWeb) {
     try {
+      // ESCUDO ANTI-CACHÉ
+      if (!js.context.hasProperty('analizarRostroLocal')) {
+        return {'valido': false, 'mensaje': '❌ Caché detectada. Abre el link en modo incógnito o agrega "?v=3" al final de la URL.'};
+      }
+
       final bytes = await foto.readAsBytes();
       final base64Img = "data:image/jpeg;base64,${base64Encode(bytes)}";
       
       final promise = js.context.callMethod('analizarRostroLocal', [base64Img]);
       final result = await js_util.promiseToFuture(promise);
       
-      if (result == "ERROR_NO_CARA") return {'valido': false, 'mensaje': '❌ No se detectó un rostro claro.'};
-      if (result == "ERROR") return {'valido': false, 'mensaje': '❌ Error al procesar imagen localmente.'};
+      if (result == "ERROR_NO_CARA") return {'valido': false, 'mensaje': '❌ IA Local: No se detectó un rostro claro.'};
+      if (result == "ERROR") return {'valido': false, 'mensaje': '❌ IA Local: Error al procesar imagen localmente.'};
       
       return {'valido': true, 'genero': result};
     } catch (e) {
@@ -54,6 +59,11 @@ Future<Map<String, dynamic>> _verificarSelfieContraPerfil(String? miFotoUrl, XFi
 
   if (kIsWeb) {
     try {
+      // ESCUDO ANTI-CACHÉ
+      if (!js.context.hasProperty('compararRostrosLocal')) {
+        return {'valido': false, 'mensaje': '❌ Caché detectada. Abre el link en modo incógnito o agrega "?v=3" al final de la URL.'};
+      }
+
       onProgress('⬇️ Preparando foto base...');
       var res = await http.get(Uri.parse(miFotoUrl));
       if (res.statusCode != 200) return {'valido': false, 'mensaje': 'No se pudo cargar la foto original.'};
@@ -89,6 +99,11 @@ Future<Map<String, dynamic>> _verificarRostrosConIA(String? miFotoUrl, List<XFil
   if (!kIsWeb) return {'valido': false, 'mensaje': 'IA Nativa Móvil en construcción...'};
 
   try {
+    // ESCUDO ANTI-CACHÉ
+    if (!js.context.hasProperty('compararRostrosLocal')) {
+      return {'valido': false, 'mensaje': '❌ Caché detectada. Abre el link en modo incógnito o agrega "?v=3" al final de la URL.'};
+    }
+
     onProgress('⬇️ Extrayendo rostro principal...');
     var res = await http.get(Uri.parse(miFotoUrl));
     if (res.statusCode != 200) return {'valido': false, 'mensaje': 'No se pudo cargar la foto base.'};
