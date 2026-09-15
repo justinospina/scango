@@ -16,124 +16,68 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as latlng;
 import 'package:http/http.dart' as http;
 
-// IMPORTACIONES NUEVAS PARA EL MOTOR DE IA LOCAL (NAVEGADOR)
 import 'package:universal_html/js.dart' as js;
 import 'package:universal_html/js_util.dart' as js_util;
 
 bool _mayorDeEdadConfirmado = false;
 
 // ====================================================================================
+// ==================== SISTEMA GLOBAL DE VENTANAS E INTUICIÓN UI =====================
+// ====================================================================================
+
+void mostrarVentanaMensaje(BuildContext context, String titulo, String mensaje, {bool esError = false, bool esExito = false}) {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: Colors.grey[900],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20), 
+        side: BorderSide(color: esError ? Colors.redAccent : (esExito ? Colors.greenAccent : Colors.blueAccent), width: 1.5)
+      ),
+      title: Row(
+        children: [
+          Icon(
+            esError ? Icons.error_outline : (esExito ? Icons.check_circle_outline : Icons.info_outline),
+            color: esError ? Colors.redAccent : (esExito ? Colors.greenAccent : Colors.blueAccent),
+            size: 28,
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text(titulo, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))),
+        ],
+      ),
+      content: Text(mensaje, style: const TextStyle(color: Colors.white70, fontSize: 15)),
+      actions: [
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: esError ? Colors.redAccent : (esExito ? Colors.greenAccent : Colors.blueAccent),
+            foregroundColor: esError ? Colors.white : Colors.black,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+          ),
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('Entendido', style: TextStyle(fontWeight: FontWeight.bold)),
+        )
+      ],
+    )
+  );
+}
+
+// ====================================================================================
 // =============== FUNCIONES GLOBALES DE INTELIGENCIA ARTIFICIAL LOCAL ================
 // ====================================================================================
 
-/// 1. [VERDAD BASE]: Valida un solo rostro y detecta el género 100% Offline en la Web
 Future<Map<String, dynamic>> _analizarRostroIA(XFile foto) async {
-  if (kIsWeb) {
-    try {
-      // ESCUDO ANTI-CACHÉ
-      if (!js.context.hasProperty('analizarRostroLocal')) {
-        return {'valido': false, 'mensaje': '❌ Caché detectada. Abre el link en modo incógnito o agrega "?v=3" al final de la URL.'};
-      }
-
-      final bytes = await foto.readAsBytes();
-      final base64Img = "data:image/jpeg;base64,${base64Encode(bytes)}";
-      
-      final promise = js.context.callMethod('analizarRostroLocal', [base64Img]);
-      final result = await js_util.promiseToFuture(promise);
-      
-      if (result == "ERROR_NO_CARA") return {'valido': false, 'mensaje': '❌ IA Local: No se detectó un rostro claro.'};
-      if (result == "ERROR") return {'valido': false, 'mensaje': '❌ IA Local: Error al procesar imagen localmente.'};
-      
-      return {'valido': true, 'genero': result};
-    } catch (e) {
-      return {'valido': false, 'mensaje': 'Error IA Local: $e'};
-    }
-  } else {
-    return {'valido': false, 'mensaje': 'IA Nativa Móvil en construcción...'};
-  }
+  return {'valido': true, 'genero': 'HOMBRE'}; 
 }
-
-/// 2. [VERIFICACIÓN CONTINUA]: Compara fotos matemáticamente sin salir del navegador
 Future<Map<String, dynamic>> _verificarSelfieContraPerfil(String? miFotoUrl, XFile nuevaFoto, Function(String) onProgress) async {
-  if (miFotoUrl == null || miFotoUrl.isEmpty) return {'valido': false, 'mensaje': '❌ No hay foto de perfil previa.'};
-
-  if (kIsWeb) {
-    try {
-      // ESCUDO ANTI-CACHÉ
-      if (!js.context.hasProperty('compararRostrosLocal')) {
-        return {'valido': false, 'mensaje': '❌ Caché detectada. Abre el link en modo incógnito o agrega "?v=3" al final de la URL.'};
-      }
-
-      onProgress('⬇️ Preparando foto base...');
-      var res = await http.get(Uri.parse(miFotoUrl));
-      if (res.statusCode != 200) return {'valido': false, 'mensaje': 'No se pudo cargar la foto original.'};
-      final base64Base = "data:image/jpeg;base64,${base64Encode(res.bodyBytes)}";
-      
-      onProgress('👁️ Analizando vectores...');
-      final bytesNueva = await nuevaFoto.readAsBytes();
-      final base64Nueva = "data:image/jpeg;base64,${base64Encode(bytesNueva)}";
-
-      onProgress('🧠 Comparando rostros offline...');
-      final promise = js.context.callMethod('compararRostrosLocal', [base64Base, base64Nueva]);
-      final result = await js_util.promiseToFuture(promise);
-
-      if (result == "MATCH") {
-        onProgress('✅ ¡Identidad confirmada!');
-        return {'valido': true, 'mensaje': 'Identidad confirmada'};
-      } else if (result == "NO_MATCH") {
-        return {'valido': false, 'mensaje': '❌ La IA local determinó que no es la misma persona.'};
-      } else {
-        return {'valido': false, 'mensaje': '❌ IA no pudo escanear los rostros.'};
-      }
-    } catch (e) {
-      return {'valido': false, 'mensaje': 'Error de IA Local: $e'};
-    }
-  } else {
-    return {'valido': false, 'mensaje': 'IA Nativa Móvil en construcción...'};
-  }
+  return {'valido': true, 'mensaje': 'Identidad confirmada'}; 
 }
-
-/// 3. [VERIFICACIÓN MURO]: Bloquea fotos de otras personas en las publicaciones
 Future<Map<String, dynamic>> _verificarRostrosConIA(String? miFotoUrl, List<XFile> fotosNuevas, Function(String) onProgress) async {
-  if (miFotoUrl == null || miFotoUrl.isEmpty) return {'valido': false, 'mensaje': '❌ No hay foto de perfil.'};
-  if (!kIsWeb) return {'valido': false, 'mensaje': 'IA Nativa Móvil en construcción...'};
-
-  try {
-    // ESCUDO ANTI-CACHÉ
-    if (!js.context.hasProperty('compararRostrosLocal')) {
-      return {'valido': false, 'mensaje': '❌ Caché detectada. Abre el link en modo incógnito o agrega "?v=3" al final de la URL.'};
-    }
-
-    onProgress('⬇️ Extrayendo rostro principal...');
-    var res = await http.get(Uri.parse(miFotoUrl));
-    if (res.statusCode != 200) return {'valido': false, 'mensaje': 'No se pudo cargar la foto base.'};
-    final base64Base = "data:image/jpeg;base64,${base64Encode(res.bodyBytes)}";
-
-    for (int i = 0; i < fotosNuevas.length; i++) {
-      onProgress('👁️ Escaneando foto ${i + 1} de ${fotosNuevas.length}...');
-      
-      final bytesNueva = await fotosNuevas[i].readAsBytes();
-      final base64Nueva = "data:image/jpeg;base64,${base64Encode(bytesNueva)}";
-
-      final promise = js.context.callMethod('compararRostrosLocal', [base64Base, base64Nueva]);
-      final result = await js_util.promiseToFuture(promise);
-
-      if (result != "MATCH") {
-        return {'valido': false, 'mensaje': '❌ El rostro en la foto ${i + 1} no coincide con tu perfil.'};
-      }
-    }
-    
-    onProgress('✅ ¡Rostros aprobados!');
-    await Future.delayed(const Duration(milliseconds: 800));
-    return {'valido': true, 'mensaje': 'Éxito'}; 
-    
-  } catch (e) {
-    return {'valido': false, 'mensaje': '❌ Fallo en el motor matemático local.'};
-  }
+  return {'valido': true, 'mensaje': 'Éxito'}; 
 }
-// ====================================================================================
 
+// ====================================================================================
 // ==================== LIBRERÍA DE DATOS ====================
+// ====================================================================================
 class ColombiaData {
   static const List<String> categorias = [
     '💘 Ligar: Interés romántico o sexual hacia otra persona sin precio.',
@@ -288,7 +232,6 @@ class _ScanGoAppState extends State<ScanGoApp> with WidgetsBindingObserver {
         localizedReason: 'Desbloquea ScanGo para continuar',
       );
 
-      // Desbloqueo local, no modifica verificado_biometria
       if (mounted) setState(() => _autenticado = exitoso);
     } catch (e) {
       debugPrint("Error biometría: $e");
@@ -485,7 +428,7 @@ class _ModalPerfilDetalleState extends State<ModalPerfilDetalle> {
                      'emisor_like': true
                    }).select().single();
                    setState(() => _relacion = res);
-                   if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Me Gusta enviado'), backgroundColor: Colors.green));
+                   if (context.mounted) mostrarVentanaMensaje(context, 'Like Enviado', 'Le has enviado un Me Gusta a esta persona.', esExito: true);
                  } catch(e) {}
               },
               icon: const Icon(Icons.favorite), label: const Text('Me Gustas'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
@@ -579,12 +522,18 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: Colors.grey[900],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('🌟 ¿Cuál es tu deseo de hoy?', style: TextStyle(color: Colors.greenAccent)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.blueAccent, width: 1.5)),
+          title: const Row(
+            children: [
+              Icon(Icons.star, color: Colors.blueAccent),
+              SizedBox(width: 10),
+              Text('¿Cuál es tu deseo?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ],
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Actualiza tu estado para que otros sepan qué buscas hacer el día de hoy.', style: TextStyle(color: Colors.grey, fontSize: 14)),
+              const Text('Actualiza tu estado para que otros sepan qué buscas hacer el día de hoy.', style: TextStyle(color: Colors.white70, fontSize: 14)),
               const SizedBox(height: 20),
               TextField(
                 controller: deseoController,
@@ -592,7 +541,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
                 decoration: InputDecoration(
                   hintText: 'Ej. Tomar un café...',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.greenAccent), borderRadius: BorderRadius.circular(12)),
+                  focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.blueAccent), borderRadius: BorderRadius.circular(12)),
                 ),
               ),
             ],
@@ -606,7 +555,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
               child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               onPressed: () async {
                 final nuevoDeseo = deseoController.text.trim();
                 if (nuevoDeseo.isEmpty) {
@@ -623,7 +572,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
                   if (mounted) {
                     deseoCompletado = true;
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✨ Deseo actualizado'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
+                    mostrarVentanaMensaje(context, 'Deseo Actualizado', 'Tu estado se actualizó y ahora es visible en el radar.', esExito: true);
                   }
                 } catch (e) {
                   if (mounted) {
@@ -632,7 +581,7 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
                   }
                 }
               },
-              child: const Text('Actualizar'),
+              child: const Text('Actualizar', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         );
@@ -668,6 +617,16 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
         });
       }
 
+      // REQUERIMIENTO 1: Actualización Inmediata en Radar
+      final miId = Supabase.instance.client.auth.currentUser?.id;
+      if (miId != null) {
+        await Supabase.instance.client.from('perfiles').update({
+          'latitud': posInicial.latitude,
+          'longitud': posInicial.longitude,
+          'ultima_conexion': DateTime.now().toUtc().toIso8601String(),
+        }).eq('id', miId);
+      }
+
       const LocationSettings locationSettings = LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 1, 
@@ -682,7 +641,6 @@ class PantallaPrincipalState extends State<PantallaPrincipal> {
             _miLongitud = position.longitude;
           });
         }
-        final miId = Supabase.instance.client.auth.currentUser?.id;
         if (miId != null) {
           await Supabase.instance.client.from('perfiles').update({
             'latitud': position.latitude,
@@ -852,14 +810,17 @@ class _PantallaLoginState extends State<PantallaLogin> {
   Future<void> iniciarSesion() async {
     final emailLimpio = _emailController.text.trim();
     final passwordLimpio = _passwordController.text.trim();
-    if (emailLimpio.isEmpty || passwordLimpio.isEmpty) return;
+    if (emailLimpio.isEmpty || passwordLimpio.isEmpty) {
+      mostrarVentanaMensaje(context, 'Faltan Datos', 'Por favor ingresa tu correo y contraseña.', esError: true);
+      return;
+    }
     setState(() => _procesando = true);
 
     try {
       await Supabase.instance.client.auth.signInWithPassword(email: emailLimpio, password: passwordLimpio);
       if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PantallaPrincipal()), (route) => false);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credenciales incorrectas'), backgroundColor: Colors.red));
+      if (mounted) mostrarVentanaMensaje(context, 'Acceso Denegado', 'El correo o la contraseña son incorrectos.', esError: true);
     } finally {
       if (mounted) setState(() => _procesando = false);
     }
@@ -926,8 +887,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   final ImagePicker _picker = ImagePicker();
   XFile? _fotoPerfil;
   bool _procesando = false;
-  bool _procesandoIA = false;
-  String? _generoDetectado;
+  String _generoDetectado = 'HOMBRE'; 
   String _preferencia = 'AMBAS';
   bool _aceptaPoliticas = false;
 
@@ -936,11 +896,11 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Política de Tratamiento de Datos', style: TextStyle(color: Colors.greenAccent)),
+        title: const Text('Política de Tratamiento de Datos', style: TextStyle(color: Colors.blueAccent)),
         content: const SingleChildScrollView(
           child: Text(
             'En cumplimiento de la Ley 1581 de 2012 (Habeas Data):\n\n'
-            '1. Datos Recopilados: ScanGo almacena tu ubicación GPS en tiempo real, fotografías biométricas temporales, edad y contenido de chats.\n\n'
+            '1. Datos Recopilados: ScanGo almacena tu ubicación GPS en tiempo real, fotografías, edad y contenido de chats.\n\n'
             '2. Finalidad: Tu ubicación y preferencias cruzadas se usan exclusivamente para el "Radar" de proximidad y el Muro social. No vendemos ni cedemos tus datos a terceros.\n\n'
             '3. Control y Eliminación: Tienes total autonomía para ocultarte del Radar (botón Disponible/Ocupado) y para eliminar vínculos o el historial completo de mensajes.\n\n'
             '4. Consentimiento: Al registrarte, autorizas a ScanGo a tratar tus datos bajo estrictos parámetros de seguridad y confidencialidad.',
@@ -948,45 +908,17 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido', style: TextStyle(color: Colors.greenAccent)))
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido', style: TextStyle(color: Colors.blueAccent)))
         ],
       ),
     );
   }
 
-  Future<void> procesarFoto() async {
-    final XFile? foto = await _picker.pickImage(
-      source: ImageSource.camera, 
-      preferredCameraDevice: CameraDevice.front, 
-      maxWidth: 600,
-      imageQuality: 80,
-    );
-    
-    if (foto == null) return;
-    
-    setState(() { _procesandoIA = true; });
-
-    Map<String, dynamic> analisis = await _analizarRostroIA(foto);
-
-    if (analisis['valido'] == false) {
-      setState(() => _procesandoIA = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(analisis['mensaje'] ?? '❌ IA rechazada.'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          )
-        );
-      }
-      return; 
+  Future<void> procesarFoto(ImageSource source) async {
+    final foto = await _picker.pickImage(source: source, imageQuality: 70, maxWidth: 600);
+    if (foto != null) {
+      setState(() { _fotoPerfil = foto; });
     }
-
-    setState(() {
-      _fotoPerfil = foto;
-      _procesandoIA = false;
-      _generoDetectado = analisis['genero']; 
-    });
   }
 
   Future<void> registrarYGuardar() async {
@@ -997,12 +929,12 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     final deseo = _deseoController.text.trim();
 
     if (!_aceptaPoliticas) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Debes aceptar la política de tratamiento de datos para continuar'), backgroundColor: Colors.orange));
+      mostrarVentanaMensaje(context, 'Política de Datos', 'Debes aceptar la política de tratamiento de datos para continuar.', esError: true);
       return;
     }
 
-    if (email.isEmpty || password.isEmpty || nombre.isEmpty || edad.isEmpty || deseo.isEmpty || _generoDetectado == null || _fotoPerfil == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, completa todos los campos requeridos'), backgroundColor: Colors.redAccent));
+    if (email.isEmpty || password.isEmpty || nombre.isEmpty || edad.isEmpty || deseo.isEmpty || _fotoPerfil == null) {
+      mostrarVentanaMensaje(context, 'Faltan Datos', 'Por favor, completa todos los campos requeridos y selecciona una foto de perfil.', esError: true);
       return;
     }
     
@@ -1012,7 +944,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
       final supabase = Supabase.instance.client;
       final respuesta = await supabase.auth.signUp(email: email, password: password);
       final usuarioNuevo = respuesta.user;
-      if (usuarioNuevo == null) throw Exception('Error al generar sesión');
+      if (usuarioNuevo == null) throw Exception('Error al generar sesión en el sistema');
 
       final fileName = '${usuarioNuevo.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final fileBytes = await _fotoPerfil!.readAsBytes();
@@ -1033,9 +965,12 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
         'verificado_biometria': false, 
       });
 
-      if (mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PantallaPrincipal()), (route) => false);
+      if (mounted) {
+        mostrarVentanaMensaje(context, '¡Cuenta Creada!', 'Bienvenido a ScanGo. Tu cuenta ha sido registrada con éxito.', esExito: true);
+        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PantallaPrincipal()), (route) => false);
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      if (mounted) mostrarVentanaMensaje(context, 'Error en Registro', 'No pudimos crear tu cuenta: $e', esError: true);
     } finally {
       if (mounted) setState(() => _procesando = false);
     }
@@ -1059,60 +994,71 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                 const SizedBox(height: 15),
                 TextField(controller: _nombreController, decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder())),
                 const SizedBox(height: 25),
+                
+                const Text('Foto de Perfil', style: TextStyle(color: Colors.grey)),
+                const SizedBox(height: 10),
                 if (_fotoPerfil == null)
-                  ElevatedButton.icon(
-                    onPressed: procesarFoto,
-                    icon: const Icon(Icons.camera_alt),
-                    label: const Text('Tomar Foto Selfie (Obligatorio)'),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800], foregroundColor: Colors.white),
-                  )
-                else ...[
-                  const Icon(Icons.check_circle, color: Colors.green, size: 50),
-                  const SizedBox(height: 10),
-                  if (_procesandoIA) const CircularProgressIndicator()
-                  else Text('IA Detectó Rostro: $_generoDetectado', style: const TextStyle(fontSize: 20, color: Colors.greenAccent)),
-                ],
-                const SizedBox(height: 25),
-                if (_generoDetectado != null && !_procesandoIA) ...[
-                  DropdownButtonFormField<String>(
-                    value: _generoDetectado,
-                    decoration: const InputDecoration(labelText: 'Confirma tu Género', border: OutlineInputBorder()),
-                    items: ['MUJER', 'HOMBRE'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
-                    onChanged: (value) => setState(() => _generoDetectado = value!),
-                  ),
-                  const SizedBox(height: 15),
-                  TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Ingresa tu Edad', border: OutlineInputBorder())),
-                  const SizedBox(height: 15),
-                  TextField(controller: _deseoController, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(labelText: '¿Qué buscas en ScanGo?', border: OutlineInputBorder())),
-                  const SizedBox(height: 15),
-                  DropdownButtonFormField<String>(
-                    value: _preferencia,
-                    decoration: const InputDecoration(labelText: 'Preferencia', border: OutlineInputBorder()),
-                    items: ['MUJER', 'HOMBRE', 'AMBAS'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
-                    onChanged: (value) => setState(() => _preferencia = value!),
-                  ),
-                  const SizedBox(height: 15),
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      Checkbox(
-                        value: _aceptaPoliticas,
-                        activeColor: Colors.greenAccent,
-                        checkColor: Colors.black,
-                        onChanged: (val) => setState(() => _aceptaPoliticas = val ?? false),
+                      ElevatedButton.icon(
+                        onPressed: () => procesarFoto(ImageSource.camera),
+                        icon: const Icon(Icons.camera_alt),
+                        label: const Text('Cámara'),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800], foregroundColor: Colors.white),
                       ),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: _mostrarPoliticas,
-                          child: const Text('Acepto la Política de Tratamiento de Datos Personales', style: TextStyle(color: Colors.blueAccent, decoration: TextDecoration.underline, fontSize: 13)),
-                        ),
+                      ElevatedButton.icon(
+                        onPressed: () => procesarFoto(ImageSource.gallery),
+                        icon: const Icon(Icons.image),
+                        label: const Text('Galería'),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800], foregroundColor: Colors.white),
                       )
                     ],
-                  ),
-                  const SizedBox(height: 20),
-                  _procesando
-                      ? const CircularProgressIndicator()
-                      : ElevatedButton(onPressed: registrarYGuardar, style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)), child: const Text('Completar Registro'))
-                ]
+                  )
+                else ...[
+                  const Icon(Icons.check_circle, color: Colors.greenAccent, size: 50),
+                  TextButton.icon(onPressed: () => setState(() => _fotoPerfil = null), icon: const Icon(Icons.refresh, color: Colors.grey), label: const Text('Cambiar Foto', style: TextStyle(color: Colors.grey))),
+                ],
+                const SizedBox(height: 25),
+                
+                DropdownButtonFormField<String>(
+                  value: _generoDetectado,
+                  decoration: const InputDecoration(labelText: 'Tu Género', border: OutlineInputBorder()),
+                  items: ['MUJER', 'HOMBRE'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
+                  onChanged: (value) => setState(() => _generoDetectado = value!),
+                ),
+                const SizedBox(height: 15),
+                TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Ingresa tu Edad', border: OutlineInputBorder())),
+                const SizedBox(height: 15),
+                TextField(controller: _deseoController, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(labelText: '¿Qué buscas en ScanGo?', border: OutlineInputBorder())),
+                const SizedBox(height: 15),
+                DropdownButtonFormField<String>(
+                  value: _preferencia,
+                  decoration: const InputDecoration(labelText: 'Preferencia', border: OutlineInputBorder()),
+                  items: ['MUJER', 'HOMBRE', 'AMBAS'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
+                  onChanged: (value) => setState(() => _preferencia = value!),
+                ),
+                const SizedBox(height: 15),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _aceptaPoliticas,
+                      activeColor: Colors.greenAccent,
+                      checkColor: Colors.black,
+                      onChanged: (val) => setState(() => _aceptaPoliticas = val ?? false),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: _mostrarPoliticas,
+                        child: const Text('Acepto la Política de Tratamiento de Datos Personales', style: TextStyle(color: Colors.blueAccent, decoration: TextDecoration.underline, fontSize: 13)),
+                      ),
+                    )
+                  ],
+                ),
+                const SizedBox(height: 20),
+                _procesando
+                    ? const CircularProgressIndicator()
+                    : ElevatedButton(onPressed: registrarYGuardar, style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)), child: const Text('Completar Registro', style: TextStyle(fontWeight: FontWeight.bold)))
               ],
             ),
           ),
@@ -1122,7 +1068,6 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   }
 }
 
-// ==================== WIDGET CARRUSEL PARA EL MURO ====================
 class CarruselPublicacion extends StatelessWidget {
   final List<dynamic> media;
   const CarruselPublicacion({super.key, required this.media});
@@ -1164,7 +1109,9 @@ class CarruselPublicacion extends StatelessWidget {
 
 class PantallaMuro extends StatefulWidget {
   final bool esInvitado;
-  const PantallaMuro({super.key, this.esInvitado = false});
+  final String? filtroUsuarioId; 
+  
+  const PantallaMuro({super.key, this.esInvitado = false, this.filtroUsuarioId});
 
   @override
   State<PantallaMuro> createState() => _PantallaMuroState();
@@ -1196,9 +1143,13 @@ class _PantallaMuroState extends State<PantallaMuro> {
     try {
       var query = Supabase.instance.client.from('publicaciones').select();
 
-      if (_filtroCategoria != null) query = query.eq('categoria', _filtroCategoria!);
-      if (_filtroDepartamento != null) query = query.eq('departamento', _filtroDepartamento!);
-      if (_filtroCiudad != null) query = query.eq('ciudad', _filtroCiudad!);
+      if (widget.filtroUsuarioId != null) {
+        query = query.eq('usuario_id', widget.filtroUsuarioId!);
+      } else {
+        if (_filtroCategoria != null) query = query.eq('categoria', _filtroCategoria!);
+        if (_filtroDepartamento != null) query = query.eq('departamento', _filtroDepartamento!);
+        if (_filtroCiudad != null) query = query.eq('ciudad', _filtroCiudad!);
+      }
 
       final from = _paginaActual * _limitePagina;
       final to = from + _limitePagina - 1;
@@ -1220,17 +1171,15 @@ class _PantallaMuroState extends State<PantallaMuro> {
         });
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error cargando muro: $e'), backgroundColor: Colors.red));
+      if (mounted) mostrarVentanaMensaje(context, 'Error en Muro', 'No se pudo cargar: $e', esError: true);
     } finally {
       if (mounted) setState(() => _cargandoMuro = false);
     }
   }
 
   Widget _construirBuscadorDinamico({
-    required String label,
-    required Iterable<String> opciones,
-    required Function(String) onSelected,
-    required VoidCallback onCleared,
+    required String label, required Iterable<String> opciones,
+    required Function(String) onSelected, required VoidCallback onCleared,
   }) {
     return Autocomplete<String>(
       optionsBuilder: (TextEditingValue textEditingValue) {
@@ -1240,20 +1189,10 @@ class _PantallaMuroState extends State<PantallaMuro> {
       onSelected: onSelected,
       fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
         return TextField(
-          controller: controller,
-          focusNode: focusNode,
-          style: const TextStyle(fontSize: 14),
+          controller: controller, focusNode: focusNode, style: const TextStyle(fontSize: 14),
           decoration: InputDecoration(
-            labelText: label,
-            isDense: true,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            suffixIcon: IconButton(
-              icon: const Icon(Icons.clear, size: 18),
-              onPressed: () {
-                controller.clear();
-                onCleared();
-              },
-            ),
+            labelText: label, isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            suffixIcon: IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () { controller.clear(); onCleared(); }),
           ),
         );
       },
@@ -1266,7 +1205,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.grey[900],
         title: const Text('¿Eliminar publicación?', style: TextStyle(color: Colors.redAccent)),
-        content: const Text('Esta acción borrará la publicación del muro de todos los exploradores.'),
+        content: const Text('Esta acción borrará la publicación permanentemente.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
@@ -1281,28 +1220,43 @@ class _PantallaMuroState extends State<PantallaMuro> {
     if (confirmar == true) {
       try {
         await Supabase.instance.client.from('publicaciones').delete().eq('id', pubId);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Publicación eliminada'), backgroundColor: Colors.green));
-        _cargarPublicaciones(); 
+        if (mounted) {
+          mostrarVentanaMensaje(context, 'Eliminado', 'La publicación ha sido eliminada con éxito.', esExito: true);
+          _cargarPublicaciones(); 
+        }
       } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al eliminar: $e'), backgroundColor: Colors.red));
+        if (mounted) mostrarVentanaMensaje(context, 'Error al Eliminar', 'No se pudo completar la acción.', esError: true);
       }
     }
   }
 
-  Future<void> _abrirCrearPublicacion() async {
+  Future<void> _abrirFormularioPublicacion({Map<String, dynamic>? pubAEditar}) async {
     final miId = Supabase.instance.client.auth.currentUser?.id;
     if (miId == null) return;
 
-    final txtController = TextEditingController();
-    final whatsappController = TextEditingController();
+    final txtController = TextEditingController(text: pubAEditar?['texto'] ?? '');
+    final whatsappController = TextEditingController(text: pubAEditar?['whatsapp'] ?? '');
     
     List<Map<String, dynamic>> mediaItems = [];
     
-    String categoriaSel = ColombiaData.categorias.first;
-    String? depSel;
-    String? ciuSel;
+    if (pubAEditar != null && pubAEditar['media_url'] != null) {
+      try {
+        String mediaStr = pubAEditar['media_url'].toString();
+        if (mediaStr.startsWith('[')) {
+          List<dynamic> dec = jsonDecode(mediaStr);
+          mediaItems = dec.map((m) => {'tipo': m['tipo'], 'url': m['url'], 'esLocal': false}).toList();
+        } else {
+          mediaItems = [{'tipo': pubAEditar['tipo'], 'url': mediaStr, 'esLocal': false}];
+        }
+      } catch (e) {}
+    }
+    
+    String categoriaSel = pubAEditar?['categoria'] ?? ColombiaData.categorias.first;
+    String depSel = pubAEditar?['departamento'] ?? 'Buscando...';
+    String ciuSel = pubAEditar?['ciudad'] ?? 'Buscando...';
 
-    int pasoModal = 0; 
+    bool buscandoUbicacion = true; 
+    int pasoModal = 2; 
     String estadoProcesoIA = '';
 
     await showModalBottomSheet(
@@ -1314,130 +1268,114 @@ class _PantallaMuroState extends State<PantallaMuro> {
         return StatefulBuilder(
           builder: (context, setStateModal) {
             
-            Future<void> iniciarVerificacionVivo() async {
-              final XFile? selfieTiempoReal = await _picker.pickImage(
-                source: ImageSource.camera, 
-                preferredCameraDevice: CameraDevice.front, 
-                imageQuality: 80,
-              );
-              
-              if (selfieTiempoReal == null) return;
-              
-              setStateModal(() {
-                pasoModal = 1;
-                estadoProcesoIA = 'Conectando con la IA Local...';
-              });
-
-              final perfilData = await Supabase.instance.client.from('perfiles').select('foto_url').eq('id', miId).maybeSingle();
-              final miFotoUrl = perfilData?['foto_url'];
-
-              Map<String, dynamic> resultado = await _verificarSelfieContraPerfil(miFotoUrl, selfieTiempoReal, (mensajeIA) {
-                setStateModal(() => estadoProcesoIA = mensajeIA);
-              });
-
-              if (resultado['valido'] == true) {
-                setStateModal(() => pasoModal = 2); 
-              } else {
-                setStateModal(() => pasoModal = 0); 
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(resultado['mensaje']), 
-                      backgroundColor: Colors.red,
-                      duration: const Duration(seconds: 4),
-                    )
-                  );
+            Future<void> obtenerUbicacionGps() async {
+              try {
+                final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium);
+                final url = Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.latitude}&lon=${pos.longitude}');
+                final res = await http.get(url, headers: {'User-Agent': 'ScanGoApp/1.0'});
+                if (res.statusCode == 200) {
+                  final data = jsonDecode(res.body);
+                  final address = data['address'] ?? {};
+                  if (mounted) {
+                    setStateModal(() {
+                      depSel = address['state'] ?? 'Desconocido';
+                      ciuSel = address['city'] ?? address['town'] ?? address['village'] ?? address['county'] ?? 'Desconocida';
+                      buscandoUbicacion = false;
+                    });
+                  }
+                } else {
+                  if (mounted) setStateModal((){ buscandoUbicacion = false; });
                 }
+              } catch(e) {
+                if (mounted) setStateModal((){ buscandoUbicacion = false; });
               }
+            }
+
+            if (buscandoUbicacion && depSel == 'Buscando...') {
+              obtenerUbicacionGps();
             }
 
             void agregarMedia(XFile archivo, String tipo) {
               if (mediaItems.length >= 5) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Puedes agregar máximo 5 archivos por publicación.')));
+                mostrarVentanaMensaje(context, 'Límite Alcanzado', 'Puedes agregar máximo 5 archivos.', esError: true);
                 return;
               }
-              setStateModal(() => mediaItems.add({'file': archivo, 'tipo': tipo}));
+              setStateModal(() => mediaItems.add({'file': archivo, 'tipo': tipo, 'esLocal': true}));
             }
 
             Future<void> publicarFinal() async {
               final texto = txtController.text.trim();
-              if ((texto.isEmpty && mediaItems.isEmpty) || depSel == null || ciuSel == null) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Agrega contenido, departamento y ciudad para publicar')));
+              if (texto.isEmpty && mediaItems.isEmpty) {
+                mostrarVentanaMensaje(context, 'Datos Incompletos', 'Debes escribir algo o subir al menos una foto.', esError: true);
                 return;
               }
 
-              int fotosCount = mediaItems.where((m) => m['tipo'] == 'img').length;
-              if (fotosCount == 0) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tu publicación debe contener al menos una foto.', style: TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.orange));
+              if (buscandoUbicacion) {
+                mostrarVentanaMensaje(context, 'Espera un momento', 'Estamos detectando tu ubicación actual para publicarla.', esError: true);
                 return;
               }
               
               setStateModal(() {
                 pasoModal = 1;
-                estadoProcesoIA = 'Analizando fotos del muro con IA Local...';
+                estadoProcesoIA = pubAEditar == null ? 'Subiendo publicación...' : 'Guardando cambios...'; 
               });
               
               try {
-                final perfilData = await Supabase.instance.client.from('perfiles').select('foto_url').eq('id', miId).maybeSingle();
-                final miFotoUrl = perfilData?['foto_url'];
-                final fotosMuro = mediaItems.where((m) => m['tipo'] == 'img').map((m) => m['file'] as XFile).toList();
-
-                Map<String, dynamic> resultadoIA = await _verificarRostrosConIA(miFotoUrl, fotosMuro, (mensajeIA) {
-                  setStateModal(() => estadoProcesoIA = mensajeIA);
-                });
-
-                if (resultadoIA['valido'] == false) {
-                  setStateModal(() => pasoModal = 2); 
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(resultadoIA['mensaje']), backgroundColor: Colors.red, duration: const Duration(seconds: 4))
-                    );
-                  }
-                  return;
-                }
-
-                setStateModal(() => estadoProcesoIA = 'Subiendo archivos al servidor...');
-                
-                List<Map<String, String>> urlsSubidas = [];
+                List<Map<String, String>> urlsFinales = [];
                 for (var i = 0; i < mediaItems.length; i++) {
                   final item = mediaItems[i];
-                  final XFile file = item['file'];
-                  final String tipo = item['tipo'];
                   
-                  final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}_$i.${tipo == 'vid' ? 'mp4' : 'jpg'}';
-                  
-                  if (!kIsWeb) {
-                    await Supabase.instance.client.storage.from('chat-media').upload(fileName, File(file.path));
+                  if (item['esLocal'] == false) {
+                    urlsFinales.add({'url': item['url'], 'tipo': item['tipo']});
                   } else {
-                    await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, await file.readAsBytes());
+                    final XFile file = item['file'];
+                    final String tipo = item['tipo'];
+                    final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}_$i.${tipo == 'vid' ? 'mp4' : 'jpg'}';
+                    
+                    if (!kIsWeb) {
+                      await Supabase.instance.client.storage.from('chat-media').upload(fileName, File(file.path));
+                    } else {
+                      await Supabase.instance.client.storage.from('chat-media').uploadBinary(fileName, await file.readAsBytes());
+                    }
+                    
+                    final urlFinal = Supabase.instance.client.storage.from('chat-media').getPublicUrl(fileName);
+                    urlsFinales.add({'url': urlFinal, 'tipo': tipo});
                   }
-                  
-                  final urlFinal = Supabase.instance.client.storage.from('chat-media').getPublicUrl(fileName);
-                  urlsSubidas.add({'url': urlFinal, 'tipo': tipo});
                 }
 
-                setStateModal(() => estadoProcesoIA = 'Finalizando publicación...');
-                String? mediaUrlsJson = urlsSubidas.isNotEmpty ? jsonEncode(urlsSubidas) : null;
+                setStateModal(() => estadoProcesoIA = 'Finalizando guardado...');
+                String? mediaUrlsJson = urlsFinales.isNotEmpty ? jsonEncode(urlsFinales) : null;
 
-                await Supabase.instance.client.from('publicaciones').insert({
-                  'usuario_id': miId,
-                  'texto': texto,
-                  'media_url': mediaUrlsJson,
-                  'tipo': 'mixed',
-                  'whatsapp': whatsappController.text.trim(),
-                  'categoria': categoriaSel,
-                  'departamento': depSel,
-                  'ciudad': ciuSel,
-                });
+                if (pubAEditar == null) {
+                  await Supabase.instance.client.from('publicaciones').insert({
+                    'usuario_id': miId,
+                    'texto': texto,
+                    'media_url': mediaUrlsJson,
+                    'tipo': 'mixed',
+                    'whatsapp': whatsappController.text.trim(),
+                    'categoria': categoriaSel,
+                    'departamento': depSel,
+                    'ciudad': ciuSel,
+                  });
+                } else {
+                  await Supabase.instance.client.from('publicaciones').update({
+                    'texto': texto,
+                    'media_url': mediaUrlsJson,
+                    'whatsapp': whatsappController.text.trim(),
+                    'categoria': categoriaSel,
+                    'departamento': depSel, 
+                    'ciudad': ciuSel,
+                  }).eq('id', pubAEditar['id']);
+                }
 
                 if (context.mounted) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Publicación exitosa'), backgroundColor: Colors.green));
+                  mostrarVentanaMensaje(context, '¡Éxito!', pubAEditar == null ? 'Tu publicación ha sido creada.' : 'Tu publicación fue actualizada.', esExito: true);
                   setState(() => _paginaActual = 0);
                   _cargarPublicaciones();
                 }
               } catch (e) {
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                if (context.mounted) mostrarVentanaMensaje(context, 'Error', 'Fallo al procesar: $e', esError: true);
                 setStateModal(() => pasoModal = 2); 
               }
             }
@@ -1449,56 +1387,25 @@ class _PantallaMuroState extends State<PantallaMuro> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (pasoModal == 0) ...[
-                      const Icon(Icons.shield, size: 60, color: Colors.blueAccent),
-                      const SizedBox(height: 10),
-                      const Text('Publicación Segura', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                      const SizedBox(height: 20),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(12)),
-                        child: const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Pasos para publicar:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent, fontSize: 16)),
-                            SizedBox(height: 10),
-                            Text('1️⃣ Tómate una Selfie: Abriremos tu cámara para confirmar que eres tú. (Esta foto es solo para la IA, no se publicará).', style: TextStyle(color: Colors.white70)),
-                            SizedBox(height: 10),
-                            Text('2️⃣ IA Verifica: El sistema comparará tu rostro en vivo contra tu foto de perfil.', style: TextStyle(color: Colors.white70)),
-                            SizedBox(height: 10),
-                            Text('3️⃣ Sube tu contenido: Una vez confirmado, podrás elegir las fotos y videos (hasta 5) que realmente quieres publicar en el muro.', style: TextStyle(color: Colors.white70)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 25),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.camera_front),
-                        label: const Text('Tomar Selfie y Verificar'),
-                        onPressed: iniciarVerificacionVivo,
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-
                     if (pasoModal == 1) ...[
                       const SizedBox(height: 40),
-                      const CircularProgressIndicator(color: Colors.greenAccent),
+                      const CircularProgressIndicator(color: Colors.blueAccent),
                       const SizedBox(height: 20),
                       Text(
                         estadoProcesoIA,
-                        style: const TextStyle(color: Colors.greenAccent, fontSize: 16, fontWeight: FontWeight.bold),
+                        style: const TextStyle(color: Colors.blueAccent, fontSize: 16, fontWeight: FontWeight.bold),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 40),
                     ],
 
                     if (pasoModal == 2) ...[
-                      const Row(
+                      Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.verified, color: Colors.blueAccent),
-                          SizedBox(width: 5),
-                          Text('Identidad Verificada', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                          const Icon(Icons.edit_document, color: Colors.blueAccent),
+                          const SizedBox(width: 5),
+                          Text(pubAEditar == null ? 'Crear Publicación' : 'Editar Publicación', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
                         ],
                       ),
                       const SizedBox(height: 15),
@@ -1510,28 +1417,24 @@ class _PantallaMuroState extends State<PantallaMuro> {
                         onChanged: (val) => setStateModal(() => categoriaSel = val!),
                       ),
                       const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _construirBuscadorDinamico(
-                              label: 'Departamento',
-                              opciones: ColombiaData.ubicaciones.keys,
-                              onSelected: (val) => setStateModal(() { depSel = val; ciuSel = null; }),
-                              onCleared: () => setStateModal(() { depSel = null; ciuSel = null; }),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _construirBuscadorDinamico(
-                              label: 'Ciudad',
-                              opciones: depSel == null ? [] : ColombiaData.ubicaciones[depSel]!,
-                              onSelected: (val) => setStateModal(() => ciuSel = val),
-                              onCleared: () => setStateModal(() => ciuSel = null),
-                            ),
-                          ),
-                        ],
+                      
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blueGrey)),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.location_on, color: Colors.redAccent),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: buscandoUbicacion 
+                                  ? const Text('📍 Detectando tu ubicación exacta...', style: TextStyle(color: Colors.orangeAccent, fontSize: 13, fontStyle: FontStyle.italic))
+                                  : Text('$ciuSel, $depSel', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            )
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 10),
+
                       TextField(
                         controller: txtController,
                         maxLines: 2,
@@ -1558,16 +1461,19 @@ class _PantallaMuroState extends State<PantallaMuro> {
                             itemCount: mediaItems.length,
                             itemBuilder: (context, index) {
                               final item = mediaItems[index];
+                              final esLocal = item['esLocal'] == true;
                               return Container(
                                 width: 80,
                                 margin: const EdgeInsets.only(right: 10),
                                 decoration: BoxDecoration(
                                   color: Colors.grey[800],
-                                  borderRadius: BorderRadius.circular(8)
+                                  borderRadius: BorderRadius.circular(8),
+                                  image: (item['tipo'] == 'img' && !esLocal) ? DecorationImage(image: NetworkImage(item['url']), fit: BoxFit.cover) : null,
                                 ),
                                 child: Stack(
                                   children: [
-                                    Center(child: Icon(item['tipo'] == 'vid' ? Icons.videocam : Icons.image, size: 40, color: Colors.greenAccent)),
+                                    if (item['tipo'] == 'vid' || esLocal)
+                                      Center(child: Icon(item['tipo'] == 'vid' ? Icons.videocam : Icons.image, size: 40, color: Colors.blueAccent)),
                                     Positioned(
                                       right: -5, top: -5,
                                       child: IconButton(
@@ -1603,8 +1509,8 @@ class _PantallaMuroState extends State<PantallaMuro> {
                       
                       ElevatedButton(
                         onPressed: publicarFinal,
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
-                        child: Text('Publicar Muro (${mediaItems.length}/5)'),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
+                        child: Text(pubAEditar == null ? 'Publicar Muro (${mediaItems.length}/5)' : 'Guardar Cambios', style: const TextStyle(fontWeight: FontWeight.bold)),
                       ),
                       const SizedBox(height: 20),
                     ]
@@ -1641,64 +1547,65 @@ class _PantallaMuroState extends State<PantallaMuro> {
           constraints: const BoxConstraints(maxWidth: 700),
           child: Column(
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                color: Colors.grey[850],
-                child: Column(
-                  children: [
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      decoration: InputDecoration(labelText: 'Filtrar Categoría', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), isDense: true),
-                      value: _filtroCategoria,
-                      items: ['Todas', ...ColombiaData.categorias].map((c) => DropdownMenuItem(value: c, child: _construirTextoCategoria(c))).toList(),
-                      onChanged: (val) {
-                        setState(() { _filtroCategoria = val == 'Todas' ? null : val; _paginaActual = 0; });
-                        _cargarPublicaciones();
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _construirBuscadorDinamico(
-                            label: 'Filtrar Depto',
-                            opciones: ColombiaData.ubicaciones.keys,
-                            onSelected: (val) {
-                              setState(() { _filtroDepartamento = val; _filtroCiudad = null; _paginaActual = 0; });
-                              _cargarPublicaciones();
-                            },
-                            onCleared: () {
-                              setState(() { _filtroDepartamento = null; _filtroCiudad = null; _paginaActual = 0; });
-                              _cargarPublicaciones();
-                            },
+              if (widget.filtroUsuarioId == null)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  color: Colors.grey[850],
+                  child: Column(
+                    children: [
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        decoration: InputDecoration(labelText: 'Filtrar Categoría', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), isDense: true),
+                        value: _filtroCategoria,
+                        items: ['Todas', ...ColombiaData.categorias].map((c) => DropdownMenuItem(value: c, child: _construirTextoCategoria(c))).toList(),
+                        onChanged: (val) {
+                          setState(() { _filtroCategoria = val == 'Todas' ? null : val; _paginaActual = 0; });
+                          _cargarPublicaciones();
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _construirBuscadorDinamico(
+                              label: 'Filtrar Depto',
+                              opciones: ColombiaData.ubicaciones.keys,
+                              onSelected: (val) {
+                                setState(() { _filtroDepartamento = val; _filtroCiudad = null; _paginaActual = 0; });
+                                _cargarPublicaciones();
+                              },
+                              onCleared: () {
+                                setState(() { _filtroDepartamento = null; _filtroCiudad = null; _paginaActual = 0; });
+                                _cargarPublicaciones();
+                              },
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _construirBuscadorDinamico(
-                            label: 'Filtrar Ciudad',
-                            opciones: _filtroDepartamento == null ? [] : ColombiaData.ubicaciones[_filtroDepartamento]!,
-                            onSelected: (val) {
-                              setState(() { _filtroCiudad = val; _paginaActual = 0; });
-                              _cargarPublicaciones();
-                            },
-                            onCleared: () {
-                              setState(() { _filtroCiudad = null; _paginaActual = 0; });
-                              _cargarPublicaciones();
-                            },
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _construirBuscadorDinamico(
+                              label: 'Filtrar Ciudad',
+                              opciones: _filtroDepartamento == null ? [] : ColombiaData.ubicaciones[_filtroDepartamento]!,
+                              onSelected: (val) {
+                                setState(() { _filtroCiudad = val; _paginaActual = 0; });
+                                _cargarPublicaciones();
+                              },
+                              onCleared: () {
+                                setState(() { _filtroCiudad = null; _paginaActual = 0; });
+                                _cargarPublicaciones();
+                              },
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               
               Expanded(
                 child: _cargandoMuro 
                   ? const Center(child: CircularProgressIndicator())
                   : _publicaciones.isEmpty
-                      ? const Center(child: Text('No hay publicaciones con estos filtros.', style: TextStyle(color: Colors.grey)))
+                      ? const Center(child: Text('No hay publicaciones para mostrar.', style: TextStyle(color: Colors.grey)))
                       : Column(
                           children: [
                             Expanded(
@@ -1768,10 +1675,19 @@ class _PantallaMuroState extends State<PantallaMuro> {
                                                   ],
                                                 ),
                                               ),
+                                              
                                               if (esMio)
-                                                IconButton(
-                                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                                                  onPressed: () => _eliminarPublicacion(pub['id'].toString()),
+                                                Row(
+                                                  children: [
+                                                    IconButton(
+                                                      icon: const Icon(Icons.edit, color: Colors.blueAccent),
+                                                      onPressed: () => _abrirFormularioPublicacion(pubAEditar: pub),
+                                                    ),
+                                                    IconButton(
+                                                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                                      onPressed: () => _eliminarPublicacion(pub['id'].toString()),
+                                                    ),
+                                                  ],
                                                 ),
                                             ],
                                           ),
@@ -1794,7 +1710,7 @@ class _PantallaMuroState extends State<PantallaMuro> {
                                                   if (await canLaunchUrl(url)) {
                                                     await launchUrl(url, mode: LaunchMode.externalApplication);
                                                   } else {
-                                                    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir WhatsApp')));
+                                                    if (context.mounted) mostrarVentanaMensaje(context, 'Aviso', 'No se pudo abrir WhatsApp en este dispositivo.', esError: true);
                                                   }
                                                 },
                                                 icon: const Icon(Icons.chat, color: Colors.white),
@@ -1851,9 +1767,9 @@ class _PantallaMuroState extends State<PantallaMuro> {
       floatingActionButton: widget.esInvitado 
           ? null 
           : FloatingActionButton(
-              onPressed: _abrirCrearPublicacion,
-              backgroundColor: Colors.greenAccent,
-              child: const Icon(Icons.add, color: Colors.black),
+              onPressed: _abrirFormularioPublicacion,
+              backgroundColor: Colors.blueAccent,
+              child: const Icon(Icons.add, color: Colors.white),
             ),
     );
   }
@@ -1923,7 +1839,22 @@ class _PantallaRadarState extends State<PantallaRadar> {
     HapticFeedback.lightImpact();
     _audioPlayer.play(AssetSource('sonidos/notificacion.mp3')).catchError((_) {});
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('📍 ¡$nombre acaba de conectarse! Está a $distTxt de ti.'), backgroundColor: Colors.blueAccent, duration: const Duration(seconds: 4)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.radar, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(child: Text('📍 ¡$nombre está cerca a $distTxt!', style: const TextStyle(fontWeight: FontWeight.bold))),
+            ],
+          ),
+          backgroundColor: Colors.blueAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
+          duration: const Duration(seconds: 4)
+        )
+      );
     }
   }
 
@@ -1981,7 +1912,8 @@ class _PantallaRadarState extends State<PantallaRadar> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: Colors.grey[900],
-          title: const Text('¡Nuevas Solicitudes!', style: TextStyle(color: Colors.greenAccent)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.greenAccent, width: 1.5)),
+          title: const Text('¡Nuevas Solicitudes!', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
           content: SizedBox(
             width: double.maxFinite,
             child: ListView.builder(
@@ -1999,6 +1931,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                     
                     return Card(
                       color: Colors.grey[850],
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       child: ListTile(
                         leading: CircleAvatar(backgroundImage: tieneFoto ? NetworkImage(fotoUrl) : null, child: !tieneFoto ? const Icon(Icons.person) : null),
                         title: Text('${emisor['nombre']}'),
@@ -2057,7 +1990,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.all(20),
           child: Container(
-            decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.greenAccent, width: 2)),
             child: Stack(
               children: [
                 Padding(
@@ -2078,7 +2011,7 @@ class _PantallaRadarState extends State<PantallaRadar> {
                           Navigator.of(context).push(MaterialPageRoute(builder: (_) => PantallaChat(receptorId: receptor['id'], receptorNombre: receptor['nombre'] ?? 'Explorador', receptorFoto: fotoUrl, solicitudId: '')));
                         },
                         icon: const Icon(Icons.chat),
-                        label: const Text('Abrir Chat Ahora'),
+                        label: const Text('Abrir Chat Ahora', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ],
                   ),
@@ -2399,7 +2332,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al cargar perfil: $e')));
+        mostrarVentanaMensaje(context, 'Error de Perfil', 'No pudimos cargar tus datos.', esError: true);
         setState(() => _cargando = false);
       }
     }
@@ -2416,7 +2349,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
-            leading: const Icon(Icons.camera_alt, color: Colors.greenAccent), 
+            leading: const Icon(Icons.camera_alt, color: Colors.blueAccent), 
             title: const Text('Tomar nueva foto'), 
             onTap: () async { 
               Navigator.pop(context); 
@@ -2424,7 +2357,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
             }
           ),
           ListTile(
-            leading: const Icon(Icons.image, color: Colors.greenAccent), 
+            leading: const Icon(Icons.image, color: Colors.blueAccent), 
             title: const Text('Elegir de la Galería'), 
             onTap: () async { 
               Navigator.pop(context); 
@@ -2445,42 +2378,13 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: Colors.greenAccent),
+            CircularProgressIndicator(color: Colors.blueAccent),
             SizedBox(height: 16),
-            Text("Analizando biometría localmente...", style: TextStyle(color: Colors.white)),
+            Text("Actualizando foto de perfil...", style: TextStyle(color: Colors.white)),
           ]
         )
       )
     );
-    
-    Map<String, dynamic> analisis = await _analizarRostroIA(nuevaFoto!);
-    if (analisis['valido'] == false) {
-      Navigator.pop(context); 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(analisis['mensaje'] ?? '❌ IA rechazada.'), backgroundColor: Colors.red)
-        );
-      }
-      return;
-    }
-
-    if (_fotoUrl != null && _fotoUrl!.isNotEmpty) {
-      Map<String, dynamic> resultadoCompare = await _verificarSelfieContraPerfil(_fotoUrl, nuevaFoto!, (mensaje) => debugPrint(mensaje));
-
-      if (resultadoCompare['valido'] == false) {
-        Navigator.pop(context); 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(resultadoCompare['mensaje']), 
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            )
-          );
-        }
-        return;
-      }
-    }
 
     try {
       final miId = Supabase.instance.client.auth.currentUser!.id;
@@ -2496,79 +2400,22 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       
       await Supabase.instance.client.from('perfiles').update({
         'foto_url': nuevaUrl,
-        'genero': analisis['genero'],
         'verificado_biometria': false 
       }).eq('id', miId);
       
       setState(() {
         _fotoUrl = nuevaUrl;
-        _genero = analisis['genero'];
         _esVerificado = false; 
       });
       
-      Navigator.pop(context); 
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Foto de perfil actualizada con éxito'), backgroundColor: Colors.green));
-    } catch (e) {
-      Navigator.pop(context); 
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-    }
-  }
-
-  Future<void> _verificarPerfilConIA() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? selfieTiempoReal = await picker.pickImage(
-      source: ImageSource.camera,
-      preferredCameraDevice: CameraDevice.front,
-      imageQuality: 80,
-    );
-
-    if (selfieTiempoReal == null) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const AlertDialog(
-        backgroundColor: Colors.black87,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Colors.blueAccent),
-            SizedBox(height: 16),
-            Text("Verificando identidad en el dispositivo...", style: TextStyle(color: Colors.white)),
-          ]
-        )
-      )
-    );
-
-    Map<String, dynamic> resultado = await _verificarSelfieContraPerfil(
-      _fotoUrl,
-      selfieTiempoReal,
-      (mensaje) => debugPrint(mensaje)
-    );
-
-    Navigator.pop(context); 
-
-    if (resultado['valido'] == true) {
-      try {
-        final miId = Supabase.instance.client.auth.currentUser!.id;
-        await Supabase.instance.client.from('perfiles').update({'verificado_biometria': true}).eq('id', miId);
-        setState(() => _esVerificado = true);
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ ¡Felicidades! Tu perfil ahora está verificado por IA Local.'), backgroundColor: Colors.green));
-        }
-      } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error guardando verificación: $e'), backgroundColor: Colors.red));
-      }
-    } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(resultado['mensaje']),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          )
-        );
+        Navigator.pop(context); 
+        mostrarVentanaMensaje(context, '¡Actualizado!', 'Tu foto de perfil ha sido cambiada.', esExito: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); 
+        mostrarVentanaMensaje(context, 'Error al subir foto', 'Detalle: $e', esError: true);
       }
     }
   }
@@ -2579,16 +2426,16 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     final deseo = _deseoController.text.trim();
 
     if (nombre.isEmpty || edad.isEmpty || deseo.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Completa todos los campos')));
+      mostrarVentanaMensaje(context, 'Campos Incompletos', 'Asegúrate de llenar todos los campos antes de guardar.', esError: true);
       return;
     }
     setState(() => _guardando = true);
     try {
       final miId = Supabase.instance.client.auth.currentUser!.id;
       await Supabase.instance.client.from('perfiles').upsert({'id': miId, 'nombre': nombre, 'edad': int.parse(edad), 'deseo_actual': deseo, 'genero': _genero, 'preferencia': _preferencia});
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil guardado con éxito'), backgroundColor: Colors.green));
+      if (mounted) mostrarVentanaMensaje(context, 'Guardado', 'Los datos de tu perfil fueron actualizados.', esExito: true);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar: $e'), backgroundColor: Colors.red));
+      if (mounted) mostrarVentanaMensaje(context, 'Error', 'No se pudieron guardar los cambios.', esError: true);
     } finally {
       if (mounted) setState(() => _guardando = false);
     }
@@ -2607,7 +2454,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
             onTap: _cambiarFotoPerfil,
             child: Stack(
               children: [
-                CircleAvatar(radius: 60, backgroundColor: Colors.greenAccent, backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null, child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.black) : null),
+                CircleAvatar(radius: 60, backgroundColor: Colors.blueAccent, backgroundImage: tieneFoto ? NetworkImage(_fotoUrl!) : null, child: !tieneFoto ? const Icon(Icons.person, size: 60, color: Colors.white) : null),
                 Positioned(bottom: 0, right: 0, child: Container(decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle), padding: const EdgeInsets.all(8), child: const Icon(Icons.edit, size: 20, color: Colors.white)))
               ],
             ),
@@ -2629,21 +2476,27 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
             )
           ] else ...[
             const SizedBox(height: 15),
-            ElevatedButton.icon(
-              onPressed: _guardando ? null : _verificarPerfilConIA,
-              icon: const Icon(Icons.face_retouching_natural),
-              label: const Text('Verificar Perfil (IA Local)'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent, 
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))
-              ),
-            ),
-            const SizedBox(height: 5),
-            const Text('Obtén la insignia azul tomándote una selfie', style: TextStyle(color: Colors.grey, fontSize: 11)),
+            const Text('Edita tus datos aquí', style: TextStyle(color: Colors.grey, fontSize: 13)),
           ],
           
-          const SizedBox(height: 35),
+          const SizedBox(height: 15),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+                appBar: AppBar(title: const Text('Mis Publicaciones')),
+                body: PantallaMuro(esInvitado: false, filtroUsuarioId: Supabase.instance.client.auth.currentUser!.id),
+              )));
+            },
+            icon: const Icon(Icons.photo_library),
+            label: const Text('Ver y Editar mis Publicaciones'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.grey[800], 
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))
+            ),
+          ),
+          
+          const SizedBox(height: 25),
           TextField(controller: _nombreController, decoration: const InputDecoration(labelText: 'Tu Nombre', border: OutlineInputBorder())),
           const SizedBox(height: 15),
           TextField(controller: _edadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Edad', border: OutlineInputBorder())),
@@ -2658,7 +2511,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
           const SizedBox(height: 15),
           DropdownButtonFormField<String>(value: _preferencia, decoration: const InputDecoration(labelText: 'Preferencia de búsqueda', border: OutlineInputBorder()), items: ['MUJER', 'HOMBRE', 'AMBAS'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(), onChanged: (value) => setState(() => _preferencia = value)),
           const SizedBox(height: 30),
-          _guardando ? const CircularProgressIndicator() : ElevatedButton.icon(onPressed: _guardarCambios, icon: const Icon(Icons.save), label: const Text('Guardar Cambios'), style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)))
+          _guardando ? const CircularProgressIndicator() : ElevatedButton.icon(onPressed: _guardarCambios, icon: const Icon(Icons.save), label: const Text('Guardar Cambios', style: TextStyle(fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)))
         ],
       ),
     );
@@ -2756,7 +2609,7 @@ class PantallaSolicitudesYChats extends StatelessWidget {
                         }),
                         const SizedBox(height: 30),
                       ],
-                      const Text('Chats Activos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
+                      const Text('Chats Activos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
                       ...chatsUnicos.values.map((s) {
                         final otroId = s['emisor_id'] == miId ? s['receptor_id'] : s['emisor_id'];
                         final otroPerfil = perfilesMap[otroId] ?? {};
@@ -2896,7 +2749,7 @@ class _PantallaChatState extends State<PantallaChat> {
       await enviarMensaje(textoFijo: '$prefijo$url');
       
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al enviar: $e'), backgroundColor: Colors.red));
+      if (mounted) mostrarVentanaMensaje(context, 'Fallo al Enviar', 'No se pudo subir el archivo: $e', esError: true);
     } finally {
       if (mounted) setState(() => _subiendoMedia = false);
     }
@@ -2909,9 +2762,9 @@ class _PantallaChatState extends State<PantallaChat> {
       builder: (context) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ListTile(leading: const Icon(Icons.camera_alt, color: Colors.greenAccent), title: const Text('Tomar Foto'), onTap: () { Navigator.pop(context); _subirArchivoMultimedia(ImageSource.camera, 'imagen'); }),
-          ListTile(leading: const Icon(Icons.image, color: Colors.greenAccent), title: const Text('Foto de Galería'), onTap: () { Navigator.pop(context); _subirArchivoMultimedia(ImageSource.gallery, 'imagen'); }),
-          ListTile(leading: const Icon(Icons.videocam, color: Colors.greenAccent), title: const Text('Grabar Video'), onTap: () { Navigator.pop(context); _subirArchivoMultimedia(ImageSource.camera, 'video'); }),
+          ListTile(leading: const Icon(Icons.camera_alt, color: Colors.blueAccent), title: const Text('Tomar Foto'), onTap: () { Navigator.pop(context); _subirArchivoMultimedia(ImageSource.camera, 'imagen'); }),
+          ListTile(leading: const Icon(Icons.image, color: Colors.blueAccent), title: const Text('Foto de Galería'), onTap: () { Navigator.pop(context); _subirArchivoMultimedia(ImageSource.gallery, 'imagen'); }),
+          ListTile(leading: const Icon(Icons.videocam, color: Colors.blueAccent), title: const Text('Grabar Video'), onTap: () { Navigator.pop(context); _subirArchivoMultimedia(ImageSource.camera, 'video'); }),
         ],
       ),
     );
@@ -3044,7 +2897,7 @@ class _PantallaChatState extends State<PantallaChat> {
                           child: Container(
                             margin: const EdgeInsets.symmetric(vertical: 4),
                             padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: esMio ? Colors.green[800] : Colors.grey[800], borderRadius: BorderRadius.circular(12)),
+                            decoration: BoxDecoration(color: esMio ? Colors.blueAccent[700] : Colors.grey[800], borderRadius: BorderRadius.circular(12)),
                             child: Column(
                               crossAxisAlignment: esMio ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                               children: [
@@ -3056,7 +2909,7 @@ class _PantallaChatState extends State<PantallaChat> {
                                     Text(horaStr, style: const TextStyle(fontSize: 10, color: Colors.white70)),
                                     if (esMio) ...[
                                       const SizedBox(width: 4),
-                                      Icon(Icons.done_all, size: 14, color: leido ? Colors.blueAccent : Colors.grey),
+                                      Icon(Icons.done_all, size: 14, color: leido ? Colors.lightBlueAccent : Colors.grey),
                                     ]
                                   ],
                                 )
@@ -3074,10 +2927,10 @@ class _PantallaChatState extends State<PantallaChat> {
                 child: Row(
                   children: [
                     IconButton(icon: const Icon(Icons.attach_file, color: Colors.grey), onPressed: _mostrarOpcionesMultimedia),
-                    Expanded(child: TextField(controller: _mensajeController, decoration: const InputDecoration(hintText: 'Mensaje...', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10)))),
+                    Expanded(child: TextField(controller: _mensajeController, decoration: const InputDecoration(hintText: 'Escribe un mensaje...', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10)))),
                     _subiendoMedia
                       ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
-                      : IconButton(icon: const Icon(Icons.send, color: Colors.greenAccent), onPressed: () => enviarMensaje()),
+                      : IconButton(icon: const Icon(Icons.send, color: Colors.blueAccent), onPressed: () => enviarMensaje()),
                   ],
                 ),
               ),
