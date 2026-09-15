@@ -29,7 +29,11 @@ const String _faceApiSecret = 'mnNOcw769SC_URdCThBgBxM7HIKELAFZ';
 /// 1. [VERDAD BASE]: Valida un solo rostro y detecta el género con IA.
 Future<Map<String, dynamic>> _analizarRostroIA(XFile foto) async {
   if (_faceApiKey.contains('TU_API')) return {'valido': false, 'mensaje': '❌ Faltan llaves de Face++ en el código.'};
-  const String apiUrl = 'https://api-us.faceplusplus.com/facepp/v3/detect';
+  // Cambia esto:
+// const String apiUrl = 'https://api-us.faceplusplus.com/facepp/v3/detect';
+
+// Por esto:
+const String apiUrl = 'https://api-cn.faceplusplus.com/facepp/v3/detect';
 
   try {
     var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
@@ -70,7 +74,7 @@ Future<Map<String, dynamic>> _verificarSelfieContraPerfil(String? miFotoUrl, XFi
   if (miFotoUrl == null || miFotoUrl.isEmpty) return {'valido': false, 'mensaje': '❌ No hay foto de perfil previa.'};
   if (_faceApiKey.contains('TU_API')) return {'valido': false, 'mensaje': '❌ Faltan llaves de Face++.'};
 
-  const String apiUrl = 'https://api-us.faceplusplus.com/facepp/v3/compare';
+  const String apiUrl = 'https://api-cn.faceplusplus.com/facepp/v3/compare';
 
   try {
     onProgress('⬇️ Obteniendo tu perfil base...');
@@ -122,7 +126,7 @@ Future<Map<String, dynamic>> _verificarRostrosConIA(String? miFotoUrl, List<XFil
   if (miFotoUrl == null || miFotoUrl.isEmpty) return {'valido': false, 'mensaje': '❌ No hay foto de perfil.'};
   if (_faceApiKey.contains('TU_API')) return {'valido': false, 'mensaje': '❌ Faltan llaves de Face++.'};
 
-  const String apiUrl = 'https://api-us.faceplusplus.com/facepp/v3/compare';
+  const String apiUrl = 'https://api-cn.faceplusplus.com/facepp/v3/compare';
 
   try {
     onProgress('⬇️ Obteniendo tu perfil base...');
