@@ -18,11 +18,13 @@ import 'package:http/http.dart' as http;
 
 bool _mayorDeEdadConfirmado = false;
 
-// ==================== FUNCIONES GLOBALES DE INTELIGENCIA ARTIFICIAL ====================
+// ====================================================================================
+// ==================== FUNCIONES GLOBALES DE INTELIGENCIA ARTIFICIAL =================
+// ====================================================================================
 
-/// [VERDAD BASE]: Valida un solo rostro y detecta el género con IA.
+/// 1. [VERDAD BASE]: Valida un solo rostro y detecta el género con IA.
 Future<Map<String, dynamic>> _analizarRostroIA(XFile foto) async {
-  // REEMPLAZA CON TUS LLAVES REALES DE FACE++
+  // ⚠️ REEMPLAZA CON TUS LLAVES REALES DE FACE++
   const String apiKey = 'TU_API_KEY_AQUI'; 
   const String apiSecret = 'TU_API_SECRET_AQUI';
   const String apiUrl = 'https://api-us.faceplusplus.com/facepp/v3/detect';
@@ -32,13 +34,16 @@ Future<Map<String, dynamic>> _analizarRostroIA(XFile foto) async {
     request.fields['api_key'] = apiKey;
     request.fields['api_secret'] = apiSecret;
     request.fields['return_attributes'] = 'gender';
-    request.files.add(await http.MultipartFile.fromPath('image_file', foto.path));
+    
+    // CORRECCIÓN WEB: Leer archivo como Bytes
+    final fileBytes = await foto.readAsBytes();
+    request.files.add(http.MultipartFile.fromBytes('image_file', fileBytes, filename: 'foto.jpg'));
 
     var response = await request.send();
+    var responseData = await response.stream.bytesToString();
+    var jsonResult = jsonDecode(responseData);
+
     if (response.statusCode == 200) {
-      var responseData = await response.stream.bytesToString();
-      var jsonResult = jsonDecode(responseData);
-      
       if (jsonResult['faces'] != null) {
         List rostros = jsonResult['faces'];
         if (rostros.length == 1) {
@@ -46,21 +51,23 @@ Future<Map<String, dynamic>> _analizarRostroIA(XFile foto) async {
           String generoTraducido = generoApi.toLowerCase() == 'female' ? 'MUJER' : 'HOMBRE';
           return {'valido': true, 'genero': generoTraducido};
         } else if (rostros.isEmpty) {
-          return {'valido': false, 'mensaje': '❌ IA rechazada: No se detectó ningún rostro humano.'};
+          return {'valido': false, 'mensaje': '❌ IA: No se detectó ningún rostro humano.'};
         } else {
-          return {'valido': false, 'mensaje': '❌ IA rechazada: Se detectó más de una persona en la foto.'};
+          return {'valido': false, 'mensaje': '❌ IA: Se detectó más de una persona en la foto.'};
         }
       }
     }
-    return {'valido': false, 'mensaje': '❌ Error de comunicación con la IA de detección.'};
+    
+    debugPrint('Error API IA: $responseData'); 
+    return {'valido': false, 'mensaje': '❌ Error API: Revisa la consola (Llaves Face++).'};
   } catch (e) {
     debugPrint('Error en Face Detect: $e');
     return {'valido': false, 'mensaje': '❌ Error de conexión al verificar el rostro.'};
   }
 }
 
-/// [VERIFICACIÓN CONTINUA]: Compara una selfie en tiempo real contra la foto de perfil
-Future<bool> _verificarSelfieContraPerfil(String? miFotoUrl, XFile selfieTiempoReal, Function(String) onProgress) async {
+/// 2. [VERIFICACIÓN CONTINUA]: Compara una foto nueva contra la foto de perfil actual
+Future<bool> _verificarSelfieContraPerfil(String? miFotoUrl, XFile nuevaFoto, Function(String) onProgress) async {
   if (miFotoUrl == null || miFotoUrl.isEmpty) return false;
 
   const String apiKey = 'TU_API_KEY_AQUI'; 
@@ -68,31 +75,35 @@ Future<bool> _verificarSelfieContraPerfil(String? miFotoUrl, XFile selfieTiempoR
   const String apiUrl = 'https://api-us.faceplusplus.com/facepp/v3/compare';
 
   try {
-    onProgress('👁️ Analizando tu rostro en tiempo real...');
+    onProgress('👁️ Analizando rostro...');
     var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
     request.fields['api_key'] = apiKey;
     request.fields['api_secret'] = apiSecret;
-    request.fields['image_url1'] = miFotoUrl; // Verdad base: Foto del perfil
-    request.files.add(await http.MultipartFile.fromPath('image_file2', selfieTiempoReal.path)); 
+    request.fields['image_url1'] = miFotoUrl; // Verdad base: Foto actual del perfil
+    
+    // CORRECCIÓN WEB: Leer archivo como Bytes
+    final fileBytes = await nuevaFoto.readAsBytes();
+    request.files.add(http.MultipartFile.fromBytes('image_file2', fileBytes, filename: 'selfie.jpg')); 
 
     var response = await request.send();
+    var responseData = await response.stream.bytesToString();
+    var jsonResult = jsonDecode(responseData);
     
     if (response.statusCode == 200) {
-      var responseData = await response.stream.bytesToString();
-      var jsonResult = jsonDecode(responseData);
-      
       if (jsonResult['confidence'] != null) {
         double porcentajeSimilitud = (jsonResult['confidence'] as num).toDouble();
+        debugPrint('Similitud Face++: $porcentajeSimilitud%');
         
         // Umbral de 80% para confirmar identidad
         if (porcentajeSimilitud < 80.0) {
-          debugPrint('IA Rechazó la identidad. Similitud: $porcentajeSimilitud%');
+          debugPrint('IA Rechazó la identidad.');
           return false; 
         }
       } else {
         return false; 
       }
     } else {
+      debugPrint('Fallo API Compare: $responseData');
       return false;
     }
     
@@ -104,6 +115,61 @@ Future<bool> _verificarSelfieContraPerfil(String? miFotoUrl, XFile selfieTiempoR
     return false;
   }
 }
+
+/// 3. [VERIFICACIÓN MURO]: Compara un array de fotos nuevas contra el perfil
+Future<bool> _verificarRostrosConIA(String? miFotoUrl, List<XFile> fotosNuevas, Function(String) onProgress) async {
+  if (miFotoUrl == null || miFotoUrl.isEmpty) return false;
+
+  const String apiKey = 'TU_API_KEY_AQUI'; 
+  const String apiSecret = 'TU_API_SECRET_AQUI';
+  const String apiUrl = 'https://api-us.faceplusplus.com/facepp/v3/compare';
+
+  try {
+    for (int i = 0; i < fotosNuevas.length; i++) {
+      final fotoNueva = fotosNuevas[i];
+      onProgress('👁️ Escaneando foto ${i + 1} de ${fotosNuevas.length}...');
+      
+      var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
+      request.fields['api_key'] = apiKey;
+      request.fields['api_secret'] = apiSecret;
+      request.fields['image_url1'] = miFotoUrl; 
+      
+      // CORRECCIÓN WEB: Leer archivo como Bytes
+      final fileBytes = await fotoNueva.readAsBytes();
+      request.files.add(http.MultipartFile.fromBytes('image_file2', fileBytes, filename: 'post_$i.jpg')); 
+
+      var response = await request.send();
+      var responseData = await response.stream.bytesToString();
+      var jsonResult = jsonDecode(responseData);
+
+      if (response.statusCode == 200) {
+        if (jsonResult['confidence'] != null) {
+          double porcentajeSimilitud = (jsonResult['confidence'] as num).toDouble();
+          debugPrint('Similitud IA (Post $i): $porcentajeSimilitud%');
+          
+          if (porcentajeSimilitud < 80.0) {
+            return false; 
+          }
+        } else {
+          return false; 
+        }
+      } else {
+        debugPrint('Fallo API Muro: $responseData');
+        return false;
+      }
+    }
+    
+    onProgress('✅ ¡Identidad confirmada por IA!');
+    await Future.delayed(const Duration(milliseconds: 800));
+    return true; 
+    
+  } catch (e) {
+    debugPrint('Error procesando biometría muro: $e');
+    return false;
+  }
+}
+
+// ====================================================================================
 
 // ==================== LIBRERÍA DE DATOS ====================
 class ColombiaData {
@@ -2361,7 +2427,6 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
     final ImagePicker picker = ImagePicker();
     XFile? nuevaFoto;
 
-    // 1. Elegir origen de la foto
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.grey[900],
@@ -2390,7 +2455,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 
     if (nuevaFoto == null) return;
     
-    // Mostramos un diálogo visual para que el usuario entienda que se está verificando
+    // Indicador visual de carga general
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -2407,10 +2472,9 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       )
     );
     
-    // 2. VERIFICAR QUE ES UN ROSTRO REAL
     Map<String, dynamic> analisis = await _analizarRostroIA(nuevaFoto!);
     if (analisis['valido'] == false) {
-      Navigator.pop(context); // Cierra el dialogo
+      Navigator.pop(context); 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(analisis['mensaje'] ?? '❌ IA rechazada.'), backgroundColor: Colors.red)
@@ -2419,12 +2483,11 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       return;
     }
 
-    // 3. VERIFICAR QUE SEA LA MISMA PERSONA DE LA FOTO ACTUAL
     if (_fotoUrl != null && _fotoUrl!.isNotEmpty) {
       bool esElMismo = await _verificarSelfieContraPerfil(_fotoUrl, nuevaFoto!, (mensaje) => debugPrint(mensaje));
 
       if (!esElMismo) {
-        Navigator.pop(context); // Cierra el dialogo
+        Navigator.pop(context); 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -2438,7 +2501,6 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       }
     }
 
-    // 4. SUBIR Y ACTUALIZAR
     try {
       final miId = Supabase.instance.client.auth.currentUser!.id;
       final fileName = '${miId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -2454,7 +2516,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       await Supabase.instance.client.from('perfiles').update({
         'foto_url': nuevaUrl,
         'genero': analisis['genero'],
-        'verificado_biometria': false // Pierde la insignia azul, debe volver a verificar
+        'verificado_biometria': false 
       }).eq('id', miId);
       
       setState(() {
@@ -2463,17 +2525,14 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
         _esVerificado = false; 
       });
       
-      Navigator.pop(context); // Cierra el dialogo
+      Navigator.pop(context); 
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Foto de perfil actualizada con éxito'), backgroundColor: Colors.green));
     } catch (e) {
-      Navigator.pop(context); // Cierra el dialogo
+      Navigator.pop(context); 
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
     }
   }
 
-  // =======================================================
-  // PROCESO PARA OBTENER LA INSIGNIA AZUL
-  // =======================================================
   Future<void> _verificarPerfilConIA() async {
     final ImagePicker picker = ImagePicker();
     final XFile? selfieTiempoReal = await picker.pickImage(
@@ -2484,6 +2543,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
 
     if (selfieTiempoReal == null) return;
 
+    // Indicador visual
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -2506,7 +2566,7 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
       (mensaje) => debugPrint(mensaje)
     );
 
-    Navigator.pop(context); // Cierra el dialogo
+    Navigator.pop(context); 
 
     if (identidadConfirmada) {
       try {
@@ -2573,9 +2633,6 @@ class _PantallaMiPerfilState extends State<PantallaMiPerfil> {
             ),
           ),
           
-          // ==========================================
-          // ZONA DE VERIFICACIÓN DINÁMICA
-          // ==========================================
           if (_esVerificado) ...[
             const SizedBox(height: 15),
             Container(
