@@ -29956,12 +29956,12 @@ aos:function aos(){},
 AP(a){return A.bcT(a)},
 bcT(a){var s=0,r=A.t(t.a),q,p=2,o=[],n,m,l,k,j,i,h,g,f,e,d,c,b
 var $async$AP=A.o(function(a0,a1){if(a0===1){o.push(a1)
-s=p}for(;;)switch(s){case 0:if(B.c.n("TU_API_KEY_AQUI","TU_API")){q=A.U(["valido",!1,"mensaje","\u274c Faltan llaves de Face++ en el c\xf3digo."],t.N,t.z)
+s=p}for(;;)switch(s){case 0:if(B.c.n("rUDvfSSp17c1RsZZFbeKbg3ufxb8SIww","TU_API")){q=A.U(["valido",!1,"mensaje","\u274c Faltan llaves de Face++ en el c\xf3digo."],t.N,t.z)
 s=1
 break}p=4
 n=A.amg("POST",A.cH("https://api-us.faceplusplus.com/facepp/v3/detect",0,null))
-n.x.m(0,"api_key","TU_API_KEY_AQUI")
-n.x.m(0,"api_secret","TU_API_SECRET_AQUI")
+n.x.m(0,"api_key","rUDvfSSp17c1RsZZFbeKbg3ufxb8SIww")
+n.x.m(0,"api_secret","mnNOcw769SC_URdCThBgBxM7HIKELAFZ")
 n.x.m(0,"return_attributes","gender")
 s=7
 return A.m(a.nq(),$async$AP)
@@ -30016,13 +30016,13 @@ beT(a,b,a0){var s=0,r=A.t(t.a),q,p=2,o=[],n,m,l,k,j,i,h,g,f,e,d,c
 var $async$qX=A.o(function(a1,a2){if(a1===1){o.push(a2)
 s=p}for(;;)switch(s){case 0:if(a==null||a.length===0){q=A.U(["valido",!1,"mensaje","\u274c No hay foto de perfil previa."],t.N,t.z)
 s=1
-break}if(B.c.n("TU_API_KEY_AQUI","TU_API")){q=A.U(["valido",!1,"mensaje","\u274c Faltan llaves de Face++."],t.N,t.z)
+break}if(B.c.n("rUDvfSSp17c1RsZZFbeKbg3ufxb8SIww","TU_API")){q=A.U(["valido",!1,"mensaje","\u274c Faltan llaves de Face++."],t.N,t.z)
 s=1
 break}p=4
 a0.$1("\u2b07\ufe0f Obteniendo tu perfil base...")
 n=A.amg("POST",A.cH(u.l,0,null))
-n.x.m(0,"api_key","TU_API_KEY_AQUI")
-n.x.m(0,"api_secret","TU_API_SECRET_AQUI")
+n.x.m(0,"api_key","rUDvfSSp17c1RsZZFbeKbg3ufxb8SIww")
+n.x.m(0,"api_secret","mnNOcw769SC_URdCThBgBxM7HIKELAFZ")
 s=7
 return A.m(A.aSz(A.cH(a,0,null),null),$async$qX)
 case 7:m=a2
@@ -30082,7 +30082,7 @@ beS(b0,b1,b2){var s=0,r=A.t(t.a),q,p=2,o=[],n,m,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2
 var $async$vG=A.o(function(b3,b4){if(b3===1){o.push(b4)
 s=p}for(;;)switch(s){case 0:if(b0==null||b0.length===0){q=A.U(["valido",!1,"mensaje","\u274c No hay foto de perfil."],t.N,t.z)
 s=1
-break}if(B.c.n("TU_API_KEY_AQUI","TU_API")){q=A.U(["valido",!1,"mensaje","\u274c Faltan llaves de Face++."],t.N,t.z)
+break}if(B.c.n("rUDvfSSp17c1RsZZFbeKbg3ufxb8SIww","TU_API")){q=A.U(["valido",!1,"mensaje","\u274c Faltan llaves de Face++."],t.N,t.z)
 s=1
 break}p=4
 b2.$1("\u2b07\ufe0f Obteniendo tu perfil base...")
@@ -30096,8 +30096,8 @@ case 8:if(!(a1=l,a2=b1.length,a1<a2)){s=10
 break}k=b1[l]
 b2.$1("\ud83d\udc41\ufe0f Escaneando foto "+A.h(l+1)+" de "+a2+"...")
 j=A.amg("POST",A.cH(u.l,0,null))
-j.x.m(0,"api_key","TU_API_KEY_AQUI")
-j.x.m(0,"api_secret","TU_API_SECRET_AQUI")
+j.x.m(0,"api_key","rUDvfSSp17c1RsZZFbeKbg3ufxb8SIww")
+j.x.m(0,"api_secret","mnNOcw769SC_URdCThBgBxM7HIKELAFZ")
 if(m!=null){a1=j.y
 a2=m
 a3=new A.jg(null,null,null,null,c)
