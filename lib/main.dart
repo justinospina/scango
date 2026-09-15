@@ -22,9 +22,9 @@ bool _mayorDeEdadConfirmado = false;
 // ==================== FUNCIONES GLOBALES DE INTELIGENCIA ARTIFICIAL =================
 // ====================================================================================
 
-// ⚠️ PON AQUÍ TUS CREDENCIALES DE FACEPLUSPLUS (Face++)
-const String _faceApiKey = 'TU_API_KEY_AQUI'; 
-const String _faceApiSecret = 'TU_API_SECRET_AQUI';
+// 🔑 TUS CREDENCIALES REALES DE FACEPLUSPLUS (Face++)
+const String _faceApiKey = 'rUDvfSSp17c1RsZZFbeKbg3ufxb8SIww'; 
+const String _faceApiSecret = 'mnNOcw769SC_URdCThBgBxM7HIKELAFZ'; 
 
 /// 1. [VERDAD BASE]: Valida un solo rostro y detecta el género con IA.
 Future<Map<String, dynamic>> _analizarRostroIA(XFile foto) async {
@@ -78,7 +78,6 @@ Future<Map<String, dynamic>> _verificarSelfieContraPerfil(String? miFotoUrl, XFi
     request.fields['api_key'] = _faceApiKey;
     request.fields['api_secret'] = _faceApiSecret;
     
-    // Descargamos la foto de supabase primero para asegurar compatibilidad web
     var imgBaseRes = await http.get(Uri.parse(miFotoUrl));
     if (imgBaseRes.statusCode == 200) {
       request.files.add(http.MultipartFile.fromBytes('image_file1', imgBaseRes.bodyBytes, filename: 'base.jpg'));
@@ -1427,7 +1426,6 @@ class _PantallaMuroState extends State<PantallaMuro> {
               });
               
               try {
-                // VERIFICAR TODAS LAS FOTOS DEL MURO
                 final perfilData = await Supabase.instance.client.from('perfiles').select('foto_url').eq('id', miId).maybeSingle();
                 final miFotoUrl = perfilData?['foto_url'];
                 final fotosMuro = mediaItems.where((m) => m['tipo'] == 'img').map((m) => m['file'] as XFile).toList();
