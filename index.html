@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <!-- ⚠️ ESTA ES LA ETIQUETA QUE FALTABA Y QUE FLUTTER NECESITA -->
   <base href="/scango/">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="ScanGo App">
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -19,12 +20,14 @@
   <title>scango</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- INICIO: MOTOR DE IA LOCAL SCANGO -->
+  <!-- ========================================================= -->
+  <!-- INICIO: MOTOR DE IA LOCAL SCANGO (EDGE AI)                -->
+  <!-- ========================================================= -->
   <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
   <script>
     const weights = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
     
-    // Carga los cerebros de la red neuronal en la memoria RAM del navegador
+    // 1. Carga los cerebros de la red neuronal en la memoria RAM del navegador
     Promise.all([
       faceapi.nets.ssdMobilenetv1.loadFromUri(weights),
       faceapi.nets.faceLandmark68Net.loadFromUri(weights),
@@ -32,7 +35,7 @@
       faceapi.nets.ageGenderNet.loadFromUri(weights)
     ]).then(() => console.log("🤖 Motor de Inteligencia Artificial Local: EN LÍNEA"));
 
-    // 1. Detectar Género Localmente
+    // 2. Función: Detectar Género Localmente
     window.analizarRostroLocal = async function(base64) {
       try {
         const img = await faceapi.fetchImage(base64);
@@ -42,7 +45,7 @@
       } catch(e) { return "ERROR"; }
     };
 
-    // 2. Comparar dos rostros Localmente
+    // 3. Función: Comparar dos rostros matemáticamente
     window.compararRostrosLocal = async function(base64_1, base64_2) {
       try {
         const img1 = await faceapi.fetchImage(base64_1);
@@ -59,7 +62,32 @@
       } catch(e) { return "ERROR"; }
     };
   </script>
-  <!-- FIN: MOTOR DE IA LOCAL SCANGO -->
+  <!-- ========================================================= -->
+  <!-- FIN: MOTOR DE IA LOCAL SCANGO                             -->
+  <!-- ========================================================= -->
+
+  <script>
+    // The value below is injected by flutter build, do not touch.
+    const serviceWorkerVersion = "3111340594";
+  </script>
+  <!-- This script adds the flutter initialization JS code -->
+  <script src="flutter.js" defer></script>
 </head>
 <body>
-<!-- ... resto de tu código HTML ... -->
+  <script>
+    window.addEventListener('load', function(ev) {
+      // Download main.dart.js
+      _flutter.loader.loadEntrypoint({
+        serviceWorker: {
+          serviceWorkerVersion: serviceWorkerVersion,
+        },
+        onEntrypointLoaded: function(engineInitializer) {
+          engineInitializer.initializeEngine().then(function(appRunner) {
+            appRunner.runApp();
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html>
