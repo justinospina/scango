@@ -1,6 +1,47 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <!-- INICIO: MOTOR DE IA LOCAL SCANGO -->
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+  <script>
+    const weights = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+    
+    // Carga los cerebros de la red neuronal en la memoria RAM del navegador
+    Promise.all([
+      faceapi.nets.ssdMobilenetv1.loadFromUri(weights),
+      faceapi.nets.faceLandmark68Net.loadFromUri(weights),
+      faceapi.nets.faceRecognitionNet.loadFromUri(weights),
+      faceapi.nets.ageGenderNet.loadFromUri(weights)
+    ]).then(() => console.log("🤖 Motor de Inteligencia Artificial Local: EN LÍNEA"));
+
+    // 1. Detectar Género Localmente
+    window.analizarRostroLocal = async function(base64) {
+      try {
+        const img = await faceapi.fetchImage(base64);
+        const det = await faceapi.detectSingleFace(img).withAgeAndGender();
+        if (!det) return "ERROR_NO_CARA";
+        return det.gender === "female" ? "MUJER" : "HOMBRE";
+      } catch(e) { return "ERROR"; }
+    };
+
+    // 2. Comparar dos rostros Localmente
+    window.compararRostrosLocal = async function(base64_1, base64_2) {
+      try {
+        const img1 = await faceapi.fetchImage(base64_1);
+        const img2 = await faceapi.fetchImage(base64_2);
+        
+        const desc1 = await faceapi.detectSingleFace(img1).withFaceLandmarks().withFaceDescriptor();
+        const desc2 = await faceapi.detectSingleFace(img2).withFaceLandmarks().withFaceDescriptor();
+        
+        if (!desc1 || !desc2) return "ERROR_NO_CARA";
+        
+        // Matemáticas: Extrae los vectores y mide la distancia. Si es < 0.6 es la misma persona.
+        const dist = faceapi.euclideanDistance(desc1.descriptor, desc2.descriptor);
+        return dist < 0.6 ? "MATCH" : "NO_MATCH";
+      } catch(e) { return "ERROR"; }
+    };
+  </script>
+  <!-- FIN: MOTOR DE IA LOCAL SCANGO -->
 <base href="$FLUTTER_BASE_HREF">
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
